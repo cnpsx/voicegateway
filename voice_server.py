@@ -642,6 +642,12 @@ async def voice_page(request):
     return web.Response(text=VOICE_HTML, content_type="text/html", charset="utf-8")
 
 
+
+TEST_HTML = open('/tmp/test_page.html').read()
+
+async def test_page(request):
+    return web.Response(text=TEST_HTML, content_type='text/html', charset='utf-8')
+
 async def network_page(request):
     global NETWORK_HTML
     if NETWORK_HTML is None:
@@ -709,6 +715,7 @@ def main():
     app.router.add_get("/voice", voice_page)
     app.router.add_get("/voice.html", voice_page)
     app.router.add_get("/network", network_page)
+    app.router.add_get("/test", test_page)
     app.router.add_get("/voice_client.py", voice_client_download)
     app.router.add_get("/voice_export.tar.gz", voice_export_download)
 

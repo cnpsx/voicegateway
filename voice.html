@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>语音通话 | Hermes</title>
+<script src="https://cdn.jsdelivr.net/npm/@ricky0123/vad@0.1.4/dist/index.min.js"></script>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -334,8 +335,8 @@ let state = STATE.IDLE;
 let mediaRecorder = null;
 let audioChunks = [];
 let stream = null;
-let autoSilenceTimer = null;
 let isSending = false;
+let recordingTimeout = null;
 
 // DOM
 const msgsEl = document.getElementById("msgs");
@@ -410,13 +411,102 @@ function escapeAttr(text) {
 }
 
 // ══════════════════════════════════════════
-// 录音 — 重写版（解决停止按钮无效的根本问题）
+// 录音
 // ══════════════════════════════════════════
-async function startRecording() {
+
+// ---- WebRTC VAD 状态 ----
+let vadInstance = null;  // vad.MicVAD 实例
+
+/** Float32Array → WAV Blob (16kHz mono 16-bit PCM) */
+function float32ToWav(samples, sampleRate) {
+  const numSamples = samples.length;
+  const buffer = new ArrayBuffer(44 + numSamples * 2);
+  const view = new DataView(buffer);
+  // RIFF header
+  writeString(view, 0, 'RIFF');
+  view.setUint32(4, 36 + numSamples * 2, true);
+  writeString(view, 8, 'WAVE');
+  writeString(view, 12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);       // PCM
+  view.setUint16(22, 1, true);       // mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeString(view, 36, 'data');
+  view.setUint32(40, numSamples * 2, true);
+  // PCM data
+  for (let i = 0; i < numSamples; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+  }
+  return new Blob([buffer], { type: 'audio/wav' });
+}
+function writeString(view, offset, str) {
+  for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+}
+
+/** WebRTC VAD 模式：持续监听，自动检测语音起止 */
+async function startAutoVAD() {
+  if (state === STATE.PROCESSING) return;
+  if (vadInstance) { try { vadInstance.destroy(); } catch(e) {} vadInstance = null; }
+
+  try {
+    const myvad = await vad.MicVAD.new({
+      positiveSpeechThreshold: 0.5,
+      negativeSpeechThreshold: 0.35,
+      redemptionFrames: 10,
+      preSpeechPadFrames: 5,
+      frameSamples: 480,
+      stream: await navigator.mediaDevices.getUserMedia({
+        audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: true, sampleRate: 16000 }
+      }),
+      onSpeechStart: () => {
+        setStatus(STATE.RECORDING);
+        ctrlHint.textContent = "正在听...";
+        addSystemMsg("🎤 开始录音...");
+      },
+      onSpeechEnd: (audio) => {
+        // audio: Float32Array, 16kHz mono
+        ctrlHint.textContent = "正在识别语音...";
+        addSystemMsg("🔍 语音结束，正在识别...");
+        vadInstance = myvad;  // 保存引用
+        setStatus(STATE.PROCESSING);
+        // 转 wav 并发送
+        const wavBlob = float32ToWav(audio, 16000);
+        audioChunks = [wavBlob];  // 替换 audioChunks
+        processAudio();
+      }
+    });
+
+    myvad.start();
+    vadInstance = myvad;
+    stream = myvad.stream;  // 保存引用，方便清理
+    setStatus(STATE.RECORDING);
+    ctrlHint.textContent = "🎤 持续监听中...";
+  } catch (e) {
+    console.error("VAD启动失败:", e);
+    addSystemMsg("⚠️ VAD启动失败: " + e.message);
+    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+    setStatus(STATE.IDLE);
+  }
+}
+
+function stopAutoVAD() {
+  if (vadInstance) {
+    try { vadInstance.destroy(); } catch(e) {}
+    vadInstance = null;
+  }
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  setStatus(STATE.IDLE);
+}
+
+// ---- 旧版 MediaRecorder（按住说话模式） ----
+async function startMediaRecorder() {
   if (state === STATE.PROCESSING) return;
   if (state === STATE.RECORDING) return;
 
-  // 确保旧资源释放
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
 
   try {
@@ -429,36 +519,24 @@ async function startRecording() {
     };
 
     mediaRecorder.onstop = async () => {
-      // 释放麦克风
       if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
-
-      // 清除OVER检测定时器
-      if (overTimer) { clearInterval(overTimer); overTimer = null; }
       if (recordingTimeout) { clearTimeout(recordingTimeout); recordingTimeout = null; }
 
-      // 如果有音频数据才处理
       if (audioChunks.length > 0 && state !== STATE.IDLE) {
         setStatus(STATE.PROCESSING);
         await processAudio();
       }
     };
 
-    mediaRecorder.start();
+    mediaRecorder.start(250);
     setStatus(STATE.RECORDING);
 
-    // 超时保护（最长60秒自动停）
     recordingTimeout = setTimeout(() => {
       if (state === STATE.RECORDING) {
-        forceStopRecording();
+        stopMediaRecorder();
         addSystemMsg("⏱️ 录音超时60秒，自动停止");
       }
     }, 60000);
-
-    // OVER关键词检测（持续监听模式）
-    if (mode === "auto") {
-      lastChunkSize = 0;
-      startOverDetection();
-    }
 
   } catch (e) {
     console.error("录音失败:", e);
@@ -468,71 +546,38 @@ async function startRecording() {
   }
 }
 
-function stopRecording() {
+function stopMediaRecorder() {
   if (mediaRecorder && mediaRecorder.state !== "inactive") {
     mediaRecorder.stop();
   } else {
-    // 没有活跃的recorder，直接清理
     forceCleanup();
   }
 }
 
-// 强制停止（从超时/异常调用）
-function forceStopRecording() {
-  if (mediaRecorder && mediaRecorder.state !== "inactive") {
-    try { mediaRecorder.stop(); } catch(e) {}
-  }
-  forceCleanup();
-}
-
 function forceCleanup() {
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
-  if (overTimer) { clearInterval(overTimer); overTimer = null; }
+  if (vadInstance) { try { vadInstance.destroy(); } catch(e) {} vadInstance = null; }
   if (recordingTimeout) { clearTimeout(recordingTimeout); recordingTimeout = null; }
-  recordingPointerId = null;
   setStatus(STATE.IDLE);
 }
 
-// OVER关键词检测
-let overTimer = null;
-let lastChunkSize = 0;
-let recordingTimeout = null;
+// ---- 统一入口 ----
+async function startRecording() {
+  if (mode === "auto") {
+    // 持续监听 → WebRTC VAD
+    addSystemMsg("🎤 启动持续监听...");
+    await startAutoVAD();
+  } else {
+    await startMediaRecorder();
+  }
+}
 
-function startOverDetection() {
-  if (!stream) return;
-  
-  overTimer = setInterval(async () => {
-    if (state !== STATE.RECORDING || !mediaRecorder || mediaRecorder.state === "inactive") {
-      clearInterval(overTimer);
-      overTimer = null;
-      return;
-    }
-    
-    const totalSize = audioChunks.reduce((s, c) => s + c.size, 0);
-    if (totalSize <= lastChunkSize) return;
-    
-    const newChunks = audioChunks.filter((_, i) => true);
-    lastChunkSize = totalSize;
-    
-    if (newChunks.length === 0) return;
-    
-    try {
-      const blob = new Blob(newChunks, { type: "audio/webm" });
-      const resp = await fetch("/api/asr", { method: "POST", body: blob });
-      const result = await resp.json();
-      
-      if (result.text) {
-        const text = result.text.toLowerCase();
-        if (text.includes("over") || text.includes("结束") || text.includes("停止")) {
-          if (overTimer) { clearInterval(overTimer); overTimer = null; }
-          stopRecording();  // 触发onstop→processAudio
-          return;
-        }
-      }
-    } catch (e) {
-      console.warn("over检测失败:", e);
-    }
-  }, 3000);
+function stopRecording() {
+  if (mode === "auto") {
+    stopAutoVAD();
+  } else {
+    stopMediaRecorder();
+  }
 }
 
 // ══════════════════════════════════════════
@@ -547,12 +592,10 @@ async function processAudio() {
   ctrlHint.textContent = "正在识别语音...";
 
   try {
-    // 合并音频
-    const blob = new Blob(audioChunks, { type: "audio/webm" });
-
-    // 转 wav（前端降级：直接发 webm，后端处理）
-    const formData = new FormData();
-    formData.append("audio", blob, "voice.webm");
+    // audioChunks 可能是 [wavBlob]（VAD模式）或 [webm,webm...]（按住说话模式）
+    const first = audioChunks[0];
+    const isWav = first instanceof Blob && first.type === 'audio/wav';
+    const blob = isWav ? first : new Blob(audioChunks, { type: "audio/webm" });
 
     // 1. ASR
     const asrResp = await fetch("/api/asr", { method: "POST", body: blob });
@@ -670,14 +713,14 @@ async function playTTS(text) {
     const resp = await fetch("/api/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: text.slice(0, 200) }), // 只播前200字
+      body: JSON.stringify({ text: text.slice(0, 100) }), // TTS只播前100字摘要
     });
 
     if (!resp.ok) {
       const fb = await fetch("/api/tts-fallback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: text.slice(0, 200) }),
+        body: JSON.stringify({ text: text.slice(0, 100) }),
       });
       if (fb.ok) {
         await _playWithAudioContext(await fb.blob());
@@ -692,7 +735,7 @@ async function playTTS(text) {
         const fb = await fetch("/api/tts-fallback", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: text.slice(0, 200) }),
+          body: JSON.stringify({ text: text.slice(0, 100) }),
         });
         if (fb.ok) {
           await _playWithAudioContext(await fb.blob());
@@ -713,53 +756,31 @@ async function replayTTS(btn) {
   const text = btn.getAttribute("data-text");
   if (text) await playTTS(text);
 }
+// 录音按钮事件：统一用 click 触发
 // ══════════════════════════════════════════
-// 录音按钮事件（pointer events，统一处理鼠标+触摸）
-// ══════════════════════════════════════════
-let recordingPointerId = null;
-let recordingTimeout = null;
 
-// pointerdown：开始录音
-btnRecord.addEventListener("pointerdown", (e) => {
-  e.preventDefault();
-  try { btnRecord.setPointerCapture(e.pointerId); } catch(ex) {}
-  recordingPointerId = e.pointerId;
-  if (mode === "hold" && state === STATE.IDLE) {
-    startRecording();
-  }
-});
-
-// pointerup/cancel：停止录音（只在按住说话模式）
-function handlePointerEnd(e) {
-  if (mode !== "hold") return;
-  if (recordingPointerId !== null && e.pointerId !== recordingPointerId) return;
-  recordingPointerId = null;
-  if (state === STATE.RECORDING) {
-    stopRecording();
-  }
-}
-
-btnRecord.addEventListener("pointerup", handlePointerEnd);
-btnRecord.addEventListener("pointercancel", handlePointerEnd);
-btnRecord.addEventListener("pointerleave", handlePointerEnd);
-
-// 全局兜底：任何地方的鼠标松开都检查是否需要停止录音
-document.addEventListener("pointerup", (e) => {
-  if (mode === "hold" && state === STATE.RECORDING) {
-    stopRecording();
-  }
-});
-
-// 持续监听模式：单击切换
 btnRecord.addEventListener("click", (e) => {
   if (mode === "auto") {
+    // 持续监听模式：单击切换
     if (state === STATE.RECORDING) {
-      // 手动停止：直接处理全部音频
-      if (overTimer) { clearInterval(overTimer); overTimer = null; }
       stopRecording();
     } else if (state === STATE.IDLE) {
       startRecording();
     }
+  } else {
+    // 按住说话模式：单击开始/停止
+    if (state === STATE.RECORDING) {
+      stopRecording();
+    } else if (state === STATE.IDLE) {
+      startRecording();
+    }
+  }
+});
+
+// 全局 mouseup 兜底（按住说话模式松手停）
+document.addEventListener("mouseup", () => {
+  if (mode === "hold" && state === STATE.RECORDING) {
+    stopRecording();
   }
 });
 
