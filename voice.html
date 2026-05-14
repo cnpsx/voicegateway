@@ -287,8 +287,8 @@ body {
   <!-- 控制区 -->
   <div class="control-bar">
     <div class="mode-toggle">
-      <button class="mode-btn active" id="modeHold" title="按住说话，松开发送">按住说话</button>
-      <button class="mode-btn" id="modeAuto" title="点击开始，自动检测静音停止">持续监听</button>
+      <button class="mode-btn" id="modeHold" title="按住说话，松开发送">按住说话</button>
+      <button class="mode-btn active" id="modeAuto" title="点击开始，自动检测静音停止">持续监听</button>
     </div>
 
     <div class="record-btn-wrap">
@@ -754,6 +754,8 @@ document.addEventListener("pointerup", (e) => {
 btnRecord.addEventListener("click", (e) => {
   if (mode === "auto") {
     if (state === STATE.RECORDING) {
+      // 手动停止：直接处理全部音频
+      if (overTimer) { clearInterval(overTimer); overTimer = null; }
       stopRecording();
     } else if (state === STATE.IDLE) {
       startRecording();
@@ -896,6 +898,10 @@ async function checkNetworkQuality() {
 // 启动：网络质量检测每15秒刷新
 checkNetworkQuality();
 setInterval(checkNetworkQuality, 15000);
+
+// 诊断浏览器支持
+console.log("MediaDevices:", !!navigator.mediaDevices);
+console.log("getUserMedia:", typeof (navigator.mediaDevices || {}).getUserMedia);
 </script>
 </body>
 </html>

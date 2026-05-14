@@ -96,6 +96,28 @@ class VoiceChat:
 
 chat = VoiceChat()
 
+async def _send_to_asr(audio_path: str):
+    """发送 wav 文件到 A3B llama.cpp ASR，结果同步到聊天记录"""
+    async with aiohttp.ClientSession() as session:
+        with open(audio_path, "rb") as f:
+            form = aiohttp.FormData()
+            form.add_field("file", f, filename="audio.wav", content_type="audio/wav")
+            form.add_field("model", "whisper-1")
+            form.add_field("language", "zh")
+            async with session.post(ASR_URL, data=form, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                if resp.status != 200:
+                    err_text = await resp.text()
+                    return web.json_response({"error": f"ASR 失败: {err_text}"}, status=502)
+                result = await resp.json()
+                text = result.get("text", "").strip()
+                if not text:
+                    return web.json_response({"error": "未识别到语音"}, status=400)
+                # 同步识别结果到聊天记录，方便联合调试
+                chat.add("user", f"[🎤语音] {text}")
+                log.info(f"ASR 识别: {text}")
+                return web.json_response({"text": text})
+
+
 # ══════════════════════════════════════════
 # ASR：录制音频 → 文字
 # ══════════════════════════════════════════
@@ -110,6 +132,16 @@ async def api_asr(request):
         # 检测文件魔数
         is_webm = data[:4] == b'\x1a\x45\xdf\xa3'
         is_wav = data[:4] == b'RIFF'
+        # Rhasspy 来的 wav 直接走快速通道（跳过 ffmpeg 和降噪，Rhasspy 已降噪）
+        if is_wav and len(data) < 500000:
+            tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+            tmp.write(data)
+            p = tmp.name
+            tmp.close()
+            try:
+                return await _send_to_asr(p)
+            finally:
+                os.unlink(p)
 
         suffix = ".webm" if is_webm else ".wav"
         tmp_in = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
@@ -137,10 +169,8 @@ async def api_asr(request):
         else:
             audio_path = tmp_in_path
 
-        # noisereduce 降噪（开源，非自造）
-        _denoised_path = None
+        # noisereduce 降噪
         try:
-            _denoised_path = audio_path.replace('.wav', '_denoised.wav')
             _sp.run(
                 ["python3", "-c", f"""
 import wave, numpy as np, noisereduce as nr
@@ -148,35 +178,17 @@ with wave.open('{audio_path}', 'rb') as w:
     sr = w.getframerate()
     frames = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float32)
 reduced = nr.reduce_noise(y=frames, sr=sr, stationary=False, prop_decrease=0.8)
-with wave.open('{_denoised_path}', 'wb') as w:
+with wave.open('{audio_path}', 'wb') as w:
     w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr)
     w.writeframes(reduced.astype(np.int16).tobytes())
-os.replace('{_denoised_path}', '{audio_path}')
 """],
                 capture_output=True, timeout=10
             )
         except Exception as _de:
             log.warning(f"降噪跳过: {_de}")
-            if _denoised_path and os.path.exists(_denoised_path):
-                os.unlink(_denoised_path)
 
         try:
-            async with aiohttp.ClientSession() as session:
-                with open(audio_path, "rb") as f:
-                    form = aiohttp.FormData()
-                    form.add_field("file", f, filename="audio.wav", content_type="audio/wav")
-                    form.add_field("model", "whisper-1")
-                    form.add_field("language", "zh")
-
-                    async with session.post(ASR_URL, data=form, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-                        if resp.status != 200:
-                            err_text = await resp.text()
-                            return web.json_response({"error": f"ASR 失败: {err_text}"}, status=502)
-                        result = await resp.json()
-                        text = result.get("text", "").strip()
-                        if not text:
-                            return web.json_response({"error": "未识别到语音"}, status=400)
-                        return web.json_response({"text": text})
+            return await _send_to_asr(audio_path)
         finally:
             os.unlink(audio_path)
 
@@ -265,12 +277,17 @@ async def api_tts(request):
 
                 wav_data = _decode_qwen_tts(tokens_text)
                 if not wav_data:
-                    # 回退：用 edge-tts
+                    # Qwen 解码失败，用 edge-tts 直接返回 wav
                     log.warning("Qwen TTS 解码失败，回退 edge-tts")
-                    return web.Response(
-                        body=json.dumps({"fallback": True, "text": text}),
-                        content_type="application/json"
-                    )
+                    import edge_tts as _et
+                    clean = re.sub(r'[\U0001F300-\U0001FAFF\U0001F600-\U0001F64F\U0001F680-\U0001F6FF\u2600-\u26FF\u2700-\u27BF\u2000-\u206F\u2E00-\u2E7F\u2B00-\u2BFF\u3000-\u303F]', '', text)
+                    if clean.strip():
+                        _com = _et.Communicate(clean, "zh-CN-XiaoxiaoNeural")
+                        _buf = io.BytesIO()
+                        async for _chunk in _com.stream():
+                            if _chunk["type"] == "audio":
+                                _buf.write(_chunk["data"])
+                        wav_data = _buf.getvalue()
 
                 # 返回 wav
                 return web.Response(
