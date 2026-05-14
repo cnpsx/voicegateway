@@ -1,0 +1,30 @@
+{
+  "mode": "office",
+  "devices": {
+    "bt2": {
+      "ipv6": 10,
+      "tailscale": 5,
+      "ipv4": -1
+    },
+    "a3b": {
+      "ipv6": 10,
+      "tailscale": 5,
+      "ipv4": -1
+    },
+    "tts": {
+      "ipv6": 10,
+      "tailscale": 5,
+      "ipv4": -1
+    },
+    "company-pc": {
+      "ipv6": 10,
+      "tailscale": 5,
+      "ipv4": -1
+    },
+    "phone": {
+      "ipv6": 10,
+      "tailscale": 5,
+      "ipv4": -1
+    }
+  }
+}

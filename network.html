@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>网络管理 | 中台</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", sans-serif;
+  background: #0a0a0f;
+  color: #e0e0e0;
+  min-height: 100vh;
+}
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 16px;
+  background: rgba(255,255,255,0.03);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  flex-shrink: 0;
+  flex-wrap: wrap; gap: 4px;
+}
+.topbar h1 { font-size: 16px; font-weight: 600; }
+.tabs { display: flex; gap: 0; }
+.tab {
+  padding: 6px 14px; font-size: 12px; text-decoration: none;
+  color: rgba(255,255,255,0.5); border-radius: 8px 8px 0 0;
+  transition: all .2s;
+}
+.tab:hover { color: rgba(255,255,255,0.8); background: rgba(255,255,255,0.03); }
+.tab.active { color: #7C5CFC; background: rgba(124,92,252,0.1); font-weight: 600; }
+
+.container { max-width: 900px; margin: 0 auto; padding: 16px; }
+
+/* ── 模式切换 ── */
+.mode-bar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 16px; background: rgba(255,255,255,0.02);
+  border-radius: 12px; margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.mode-btn {
+  padding: 8px 20px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.04); color: #e0e0e0; cursor: pointer;
+  font-size: 13px; transition: all .2s;
+}
+.mode-btn.active { background: #7C5CFC; border-color: #7C5CFC; color: #fff; font-weight: 600; }
+.mode-btn:hover:not(.active) { background: rgba(255,255,255,0.08); }
+
+.action-btn {
+  padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer;
+  font-size: 12px; font-weight: 500; transition: all .2s;
+}
+.action-btn:active { transform: scale(0.96); }
+.btn-save { background: #7C5CFC; color: #fff; }
+.btn-save:hover { background: #6a4be0; }
+.btn-reset { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.6); border: 1px solid rgba(255,255,255,0.08); }
+.btn-reset:hover { background: rgba(255,193,7,0.1); color: #ffc107; border-color: rgba(255,193,7,0.3); }
+
+/* ── 设备卡片 ── */
+.device-card {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+  transition: border .2s;
+}
+.device-card:hover { border-color: rgba(124,92,252,0.2); }
+.device-header {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 12px;
+}
+.device-icon { font-size: 24px; }
+.device-name { font-size: 14px; font-weight: 600; }
+
+.slider-row {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 8px;
+}
+.slider-row:last-child { margin-bottom: 0; }
+.slider-label {
+  width: 70px; font-size: 12px; color: rgba(255,255,255,0.5);
+  flex-shrink: 0;
+}
+.slider-wrap {
+  flex: 1; position: relative;
+}
+.slider-wrap input[type="range"] {
+  width: 100%; height: 6px;
+  -webkit-appearance: none; appearance: none;
+  border-radius: 3px;
+  outline: none;
+  background: rgba(255,255,255,0.1);
+  transition: background .2s;
+}
+.slider-wrap input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 18px; height: 18px;
+  border-radius: 50%; background: #7C5CFC;
+  cursor: pointer; border: 2px solid rgba(255,255,255,0.2);
+  transition: all .15s;
+}
+.slider-wrap input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.15); }
+.slider-wrap input[type="range"]::-moz-range-thumb {
+  width: 18px; height: 18px; border-radius: 50%;
+  background: #7C5CFC; cursor: pointer; border: none;
+}
+.slider-value {
+  width: 36px; text-align: center; font-size: 14px; font-weight: 600;
+  flex-shrink: 0; cursor: pointer; padding: 2px 4px; border-radius: 4px;
+  transition: all .2s;
+}
+.slider-value:hover { background: rgba(124,92,252,0.1); }
+.slider-value.disabled { color: #f44336; }
+.slider-value.active { color: #4CAF50; }
+.slider-value-input {
+  width: 36px; text-align: center; font-size: 14px; font-weight: 600;
+  background: rgba(255,255,255,0.08); border: 1px solid #7C5CFC;
+  color: #e0e0e0; border-radius: 4px; padding: 2px; outline: none;
+}
+
+/* ── 预览区 ── */
+.preview-section {
+  margin-top: 20px;
+}
+.preview-title {
+  font-size: 14px; font-weight: 600; margin-bottom: 12px;
+  color: rgba(255,255,255,0.7);
+}
+.preview-grid {
+  display: grid; gap: 6px;
+}
+.preview-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; border-radius: 6px;
+  font-size: 12px;
+  background: rgba(255,255,255,0.02);
+  transition: background .2s;
+}
+.preview-row:hover { background: rgba(255,255,255,0.05); }
+.preview-from, .preview-to { font-weight: 500; white-space: nowrap; }
+.preview-arrow { color: rgba(255,255,255,0.2); }
+.preview-path {
+  padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;
+}
+.path-ipv6 { background: rgba(33,150,243,0.15); color: #64B5F6; }
+.path-tailscale { background: rgba(76,175,80,0.15); color: #81C784; }
+.path-ipv4 { background: rgba(255,152,0,0.15); color: #FFB74D; }
+.path-none { background: rgba(244,67,54,0.15); color: #e57373; }
+.preview-priority {
+  margin-left: auto; font-size: 11px; color: rgba(255,255,255,0.3);
+}
+
+/* ── 延迟条 ── */
+.latency-bar-wrap {
+  width: 60px; height: 6px; background: rgba(255,255,255,0.06);
+  border-radius: 3px; overflow: hidden; margin: 0 8px; flex-shrink: 0;
+}
+.latency-bar {
+  height: 100%; border-radius: 3px; transition: width .3s, background .3s;
+}
+.latency-text {
+  font-size: 11px; color: rgba(255,255,255,0.4); width: 50px; text-align: right; flex-shrink: 0;
+}
+
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  padding: 10px 24px; border-radius: 8px;
+  font-size: 13px; font-weight: 500;
+  background: #1a1a24; border: 1px solid rgba(255,255,255,0.1);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  opacity: 0; transition: opacity .3s;
+  z-index: 999;
+}
+.toast.show { opacity: 1; }
+.toast.success { border-color: #4CAF50; color: #81C784; }
+.toast.error { border-color: #f44336; color: #e57373; }
+
+/* ── 响应式 ── */
+@media (max-width: 600px) {
+  .container { padding: 10px; }
+  .topbar { padding: 6px 10px; }
+  .topbar h1 { font-size: 14px; }
+  .tab { padding: 4px 8px; font-size: 11px; }
+  .device-card { padding: 12px; }
+  .slider-label { width: 60px; font-size: 11px; }
+}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>🌐 网络管理</h1>
+  <div class="tabs">
+    <a href="/voice" class="tab">🎙️ 语音</a>
+    <a href="/network" class="tab active">🌐 网络</a>
+  </div>
+</div>
+
+<div class="container">
+  <!-- 模式切换 -->
+  <div class="mode-bar">
+    <span style="font-size:13px;font-weight:500;color:rgba(255,255,255,0.6);">模式：</span>
+    <button class="mode-btn active" data-mode="office" id="modeOffice">🏢 办公</button>
+    <button class="mode-btn" data-mode="remote" id="modeRemote">🏠 远程</button>
+    <button class="mode-btn" data-mode="home" id="modeHome">🏡 在家</button>
+    <button class="action-btn btn-save" id="btnSave">💾 保存</button>
+    <button class="action-btn btn-reset" id="btnReset">↩️ 恢复默认</button>
+  </div>
+
+  <!-- 设备列表 -->
+  <div id="deviceList"></div>
+
+  <!-- 预览 -->
+  <div class="preview-section">
+    <div class="preview-title">📡 当前网络调用路径</div>
+    <div class="preview-grid" id="previewGrid"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════
+// 状态
+// ══════════════════════════════════════════
+let config = null;
+const NET_TYPES = ["ipv6", "tailscale", "ipv4"];
+const NET_LABELS = { ipv6: "IPv6", tailscale: "Tailscale", ipv4: "IPv4" };
+const NET_COLORS = { ipv6: "#64B5F6", tailscale: "#81C784", ipv4: "#FFB74D" };
+const NET_CLASSES = { ipv6: "path-ipv6", tailscale: "path-tailscale", ipv4: "path-ipv4" };
+
+// ══════════════════════════════════════════
+// 加载配置
+// ══════════════════════════════════════════
+async function loadConfig() {
+  try {
+    const resp = await fetch("/api/network/config");
+    config = await resp.json();
+    render();
+  } catch (e) {
+    showToast("加载配置失败: " + e.message, "error");
+  }
+}
+
+// ══════════════════════════════════════════
+// 渲染
+// ══════════════════════════════════════════
+function render() {
+  if (!config) return;
+  // 模式按钮
+  document.querySelectorAll(".mode-btn").forEach(b => {
+    b.classList.toggle("active", b.dataset.mode === config.mode);
+  });
+  renderDevices();
+  renderPreview();
+}
+
+function renderDevices() {
+  const el = document.getElementById("deviceList");
+  const devices = config.device_list;
+  el.innerHTML = devices.map(d => {
+    const vals = config.devices[d.id] || {};
+    const sliders = NET_TYPES.map(t => {
+      const v = vals[t] !== undefined ? vals[t] : -1;
+      const pct = ((v + 1) / 11) * 100;
+      const color = v === -1 ? "#f44336" : "#4CAF50";
+      return `
+        <div class="slider-row">
+          <span class="slider-label">${NET_LABELS[t]}</span>
+          <div class="slider-wrap">
+            <input type="range" min="-1" max="10" value="${v}"
+              data-device="${d.id}" data-type="${t}"
+              oninput="onSliderChange(this)" style="background:linear-gradient(to right,${color}33 0%,${color} ${pct}%,rgba(255,255,255,0.06) ${pct}%,rgba(255,255,255,0.06) 100%)">
+          </div>
+          <span class="slider-value ${v === -1 ? 'disabled' : 'active'}"
+            onclick="onValueClick(this, '${d.id}', '${t}')" id="val_${d.id}_${t}">${v === -1 ? '禁用' : v}</span>
+        </div>`;
+    }).join("");
+
+    return `
+      <div class="device-card">
+        <div class="device-header">
+          <span class="device-icon">${d.icon}</span>
+          <span class="device-name">${d.name}</span>
+        </div>
+        ${sliders}
+      </div>`;
+  }).join("");
+}
+
+async function renderPreview() {
+  try {
+    const resp = await fetch("/api/network/preview");
+    const data = await resp.json();
+    const grid = document.getElementById("previewGrid");
+    grid.innerHTML = data.previews.map(p => {
+      const cls = p.chosen === "无可用路径" ? "path-none" : (NET_CLASSES[p.chosen] || "path-none");
+      const label = p.chosen === "无可用路径" ? "❌ 无路径" : (NET_LABELS[p.chosen] || p.chosen);
+      // 延迟条：0ms=0%，100ms=100%，绿→黄→红渐变
+      const latRaw = p.latency >= 0 ? p.latency : -1;
+      const latencyPct = latRaw >= 0 ? Math.min(100, (latRaw / 100) * 100) : 0;
+      const barColor = latRaw < 0 ? '#555' :
+                       latRaw < 10 ? '#4CAF50' :
+                       latRaw < 30 ? '#8BC34A' :
+                       latRaw < 50 ? '#FFB74D' :
+                       latRaw < 80 ? '#FF9800' : '#f44336';
+      return `
+        <div class="preview-row">
+          <span class="preview-from">${p.from_name}</span>
+          <span class="preview-arrow">→</span>
+          <span class="preview-to">${p.to_name}</span>
+          <span class="preview-path ${cls}">${label}</span>
+          <div class="latency-bar-wrap" title="${p.latency >= 0 ? p.latency.toFixed(1) + 'ms' : '无法检测'}">
+            <div class="latency-bar" style="width:${latencyPct}%;background:${barColor};"></div>
+          </div>
+          <span class="latency-text">${p.latency >= 0 ? p.latency.toFixed(1) + 'ms' : '--'}</span>
+        </div>`;
+    }).join("");
+  } catch (e) {
+    console.error("预览加载失败", e);
+  }
+}
+
+// ══════════════════════════════════════════
+// 交互
+// ══════════════════════════════════════════
+function onSliderChange(el) {
+  const val = parseInt(el.value);
+  const device = el.dataset.device;
+  const type = el.dataset.type;
+  config.devices[device] = config.devices[device] || {};
+  config.devices[device][type] = val;
+
+  // 更新数值显示
+  const label = document.getElementById(`val_${device}_${type}`);
+  if (label) {
+    label.textContent = val === -1 ? "禁用" : val;
+    label.className = "slider-value " + (val === -1 ? "disabled" : "active");
+  }
+  // 更新滑块背景色
+  const pct = ((val + 1) / 11) * 100;
+  const color = val === -1 ? "#f44336" : "#4CAF50";
+  el.style.background = `linear-gradient(to right,${color}33 0%,${color} ${pct}%,rgba(255,255,255,0.06) ${pct}%,rgba(255,255,255,0.06) 100%)`;
+
+  // 实时更新预览
+  renderPreview();
+}
+
+let editingInput = null;
+function onValueClick(el, device, type) {
+  if (editingInput) return;
+  const val = config.devices[device] ? config.devices[device][type] : -1;
+  const input = document.createElement("input");
+  input.type = "number";
+  input.min = -1;
+  input.max = 10;
+  input.value = val;
+  input.className = "slider-value-input";
+  el.replaceWith(input);
+  input.focus();
+  input.select();
+  editingInput = input;
+
+  input.onblur = () => {
+    commitValue(input, device, type);
+  };
+  input.onkeydown = (e) => {
+    if (e.key === "Enter") { e.preventDefault(); commitValue(input, device, type); }
+    if (e.key === "Escape") { e.preventDefault(); cancelEdit(input, device, type, val); }
+  };
+}
+
+function commitValue(input, device, type) {
+  let v = parseInt(input.value);
+  if (isNaN(v) || v < -1) v = -1;
+  if (v > 10) v = 10;
+  config.devices[device] = config.devices[device] || {};
+  config.devices[device][type] = v;
+
+  // 更新滑块
+  const slider = document.querySelector(`input[data-device="${device}"][data-type="${type}"]`);
+  if (slider) { slider.value = v; onSliderChange(slider); }
+
+  editingInput = null;
+}
+
+function cancelEdit(input, device, type, oldVal) {
+  const span = document.createElement("span");
+  span.className = "slider-value " + (oldVal === -1 ? "disabled" : "active");
+  span.textContent = oldVal === -1 ? "禁用" : oldVal;
+  span.onclick = () => onValueClick(span, device, type);
+  span.id = `val_${device}_${type}`;
+  input.replaceWith(span);
+  editingInput = null;
+}
+
+// ══════════════════════════════════════════
+// 模式切换
+// ══════════════════════════════════════════
+document.querySelectorAll(".mode-btn").forEach(btn => {
+  btn.onclick = async () => {
+    const mode = btn.dataset.mode;
+    try {
+      const resp = await fetch(`/api/network/defaults?mode=${mode}`);
+      const defaults = await resp.json();
+      config.mode = mode;
+      config.devices = defaults.devices;
+      render();
+      showToast(`已切换到${mode === "office" ? "办公" : mode === "home" ? "在家" : "远程"}模式`, "success");
+    } catch (e) {
+      showToast("切换失败", "error");
+    }
+  };
+});
+
+// ══════════════════════════════════════════
+// 保存
+// ══════════════════════════════════════════
+document.getElementById("btnSave").onclick = async () => {
+  try {
+    const resp = await fetch("/api/network/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: config.mode, devices: config.devices }),
+    });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+    showToast("✅ 配置已保存", "success");
+  } catch (e) {
+    showToast("保存失败: " + e.message, "error");
+  }
+};
+
+// 恢复默认（当前模式的默认值）
+document.getElementById("btnReset").onclick = async () => {
+  const mode = config.mode;
+  try {
+    const resp = await fetch(`/api/network/defaults?mode=${mode}`);
+    const defaults = await resp.json();
+    config.devices = defaults.devices;
+    render();
+    showToast(`已恢复${mode === "office" ? "办公" : "远程"}模式默认值`, "success");
+  } catch (e) {
+    showToast("恢复失败", "error");
+  }
+};
+
+// ══════════════════════════════════════════
+// Toast
+// ══════════════════════════════════════════
+let toastTimer = null;
+function showToast(msg, type) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.className = "toast show " + (type || "");
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.classList.remove("show"); }, 2000);
+}
+
+// ══════════════════════════════════════════
+// 启动
+// ══════════════════════════════════════════
+loadConfig();
+</script>
+</body>
+</html>
