@@ -150,4 +150,21 @@ VAD mode 3（最敏感），但配合较长的静音超时（~2s），确保：
 | 打断反应 | 手动按钮 | 语音自动 | V1, V4 |
 | **不误打断** | 未测试 | 思考停顿不打断 | V5, V8 |
 | **语速兼容** | 未测试 | 快慢语速均可 | V6, V7 |
-| 稳定性 | 未测试 | 100次≥95% | E5 |
+|| 稳定性 | 未测试 | 100次≥95% | E5 |
+
+## 八、部署实战经验（踩坑记录）
+
+### 8.1 容器运行时选择
+Podman（无 root 守护进程）可替代 Docker，命令完全兼容。适用场景：服务器没有 sudo 密码，apt 安装 Docker 被网络/锁阻塞。
+
+### 8.2 Docker Hub 国内访问
+直连 registry-1.docker.io 超时（GFW）。国内镜像站（中科大/网易/百度/阿里云）DNS 解析经常失败。可靠方法：开代理 export https_proxy=http://192.168.1.234:7890 再 pull。镜像 tag 用 latest，2.5 不存在。
+
+### 8.3 容器启动要点
+--profile zh 必传，否则报错退出。配置文件挂载到容器内 /root/.config/rhasspy/profiles 而不是 /home/rhasspy/。容器内无 ALSA，mic/sound 必须设成 dummy。
+
+### 8.4 配置验证
+用 curl 调 API 验证才是真实配置，Web UI 可能显示旧数据。
+
+### 8.5 后端优化
+/api/asr 提取 _send_to_asr() 让 Rhasspy wav 和 webm 共用。Rhasspy 来的 wav 直接走快速通道（跳过 ffmpeg 和 noisereduce）。识别结果自动同步到聊天记录方便调试。
