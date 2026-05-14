@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>会话词云 — 语音通话开发</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/wordcloud2.js/1.1.0/wordcloud2.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #0a0a0f;
+  display: flex; flex-direction: column; align-items: center;
+  min-height: 100vh; font-family: -apple-system, system-ui, sans-serif;
+  padding: 20px;
+}
+h1 {
+  color: #e0e0e0; font-size: 20px; margin-bottom: 8px;
+  font-weight: 600; letter-spacing: 1px;
+}
+.subtitle {
+  color: rgba(255,255,255,0.3); font-size: 12px;
+  margin-bottom: 20px; text-align: center;
+}
+#canvas-container {
+  position: relative; width: 700px; height: 700px;
+  background: rgba(255,255,255,0.02);
+  border-radius: 16px; border: 1px solid rgba(255,255,255,0.06);
+}
+#wordcloud { width: 700px; height: 700px; }
+#legend {
+  margin-top: 16px; display: flex; gap: 20px; flex-wrap: wrap;
+  justify-content: center;
+}
+.legend-item {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: rgba(255,255,255,0.5);
+}
+.legend-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+}
+@media (max-width: 740px) {
+  #canvas-container, #wordcloud { width: 95vw; height: 95vw; }
+}
+</style>
+</head>
+<body>
+
+<h1>🎙️ 语音通话开发 · 关键词云</h1>
+<p class="subtitle">2026-05-15 会话 · 共 652 条消息 · 50 个核心关键词</p>
+
+<div id="canvas-container">
+  <canvas id="wordcloud"></canvas>
+</div>
+
+<div id="legend"></div>
+
+<script>
+// 词云数据 [word, weight]
+const words = [
+  ["你", 80], ["我", 60], ["Hermes", 40], ["ASR", 38], ["TTS", 35],
+  ["录音", 30], ["语音页面", 28], ["A3B", 28], ["调试", 22], ["C#", 20],
+  ["bt2", 18], ["voice.html", 18], ["圆圈", 18], ["红叉", 15],
+  ["VoiceClient", 15], ["VAD", 15], ["日志", 15], ["12054", 15],
+  ["voice_server.py", 12], ["WAV", 12], ["按住说话", 12], ["倒计时", 12],
+  ["诊断", 12], ["改代码", 12], ["GitHub", 10], ["MediaRecorder", 10],
+  ["调试模式", 10], ["重启", 10], ["8642", 10], ["127.0.0.1", 10],
+  ["MainForm", 8], ["12026", 8], ["IPv6", 8], ["Gateway", 8],
+  ["Edge TTS", 8], ["192.168.1.21", 8], ["持续监听", 8],
+  ["流水线", 8], ["外圈", 8], ["语音识别", 8], ["API", 8],
+  ["修复", 8], ["git push", 8], ["WinForms", 6], ["Tailscale", 6],
+  ["Qwen Omni", 6], ["llama.cpp", 6], ["编译", 6],
+  ["战情室", 5], ["DeepSeek", 5], ["全链路", 5],
+  ["端口探测", 5], ["波形文件", 4], ["config.json", 4],
+  ["诊断报告", 4], ["WebSocket", 3], ["SoundPlayer", 3],
+];
+
+// 分类颜色
+const categories = {
+  "person": ["你", "我", "Hermes", "A3B"],
+  "service": ["ASR", "TTS", "Gateway", "Edge TTS", "llama.cpp", "Qwen Omni",
+              "DeepSeek", "VAD", "MediaRecorder", "WebSocket", "SoundPlayer"],
+  "code": ["C#", "voice.html", "VoiceClient", "voice_server.py",
+           "MainForm", "WinForms", "waveIn API", "config.json", "WAV"],
+  "network": ["bt2", "12054", "12026", "8642", "IPv6", "Tailscale",
+              "127.0.0.1", "192.168.1.21", "端口探测"],
+  "action": ["录音", "调试", "诊断", "按住说话", "持续监听", "改代码",
+             "重启", "修复", "编译", "git push", "倒计时"],
+  "ui": ["圆圈", "红叉", "流水线", "外圈", "语音页面", "语音识别",
+         "调试模式", "日志", "API"],
+  "project": ["GitHub", "战情室", "全链路", "诊断报告", "波形文件",
+              "pipeline"],
+};
+
+function getColor(word) {
+  for (const [cat, list] of Object.entries(categories)) {
+    if (list.includes(word)) {
+      const colors = {
+        person:   ["#7C5CFC", "#9B7FFF"],
+        service:  ["#4FC3F7", "#29B6F6"],
+        code:     ["#81C784", "#66BB6A"],
+        network:  ["#FFB74D", "#FFA726"],
+        action:   ["#FF6B6B", "#EF5350"],
+        ui:       ["#CE93D8", "#BA68C8"],
+        project:  ["#F06292", "#EC407A"],
+      };
+      const c = colors[cat] || ["#e0e0e0"];
+      return c[Math.floor(Math.random() * c.length)];
+    }
+  }
+  return "#e0e0e0";
+}
+
+// 颜色权重列表
+const weightList = words.map(([w, wt]) => {
+  const fontSize = Math.max(16, Math.min(48, 12 + wt * 0.6));
+  return [w, wt, getColor(w), fontSize];
+});
+
+// 绘制词云
+const canvas = document.getElementById("wordcloud");
+window.onload = function() {
+  WordCloud(canvas, {
+    list: weightList,
+    gridSize: 12,
+    weightFactor: function(w) { return Math.max(14, Math.min(48, 10 + w * 0.5)); },
+    fontFamily: "'Segoe UI', 'Microsoft YaHei', sans-serif",
+    color: function(item) { return item[2]; },
+    rotateRatio: 0.2,
+    rotationSteps: 2,
+    backgroundColor: "transparent",
+    shape: "circle",
+    ellipticity: 0.8,
+    shuffle: false,
+  });
+
+  // 图例
+  const legendMap = {
+    "person": "角色/人", "service": "服务/组件", "code": "代码/文件",
+    "network": "网络/地址", "action": "操作/动作", "ui": "UI/界面",
+    "project": "项目/综合"
+  };
+  const legendEl = document.getElementById("legend");
+  for (const [cat, label] of Object.entries(legendMap)) {
+    const item = document.createElement("div");
+    item.className = "legend-item";
+    const dot = document.createElement("span");
+    dot.className = "legend-dot";
+    dot.style.background = getColor(Object.keys(categories).find(k => categories[k].length > 0 && k === cat) ? categories[cat][0] : "#e0e0e0");
+    // 获取该类第一个词的颜色
+    const firstWord = categories[cat]?.[0];
+    dot.style.background = firstWord ? getColor(firstWord) : "#e0e0e0";
+    item.appendChild(dot);
+    item.appendChild(document.createTextNode(label));
+    legendEl.appendChild(item);
+  }
+};
+</script>
+</body>
+</html>
