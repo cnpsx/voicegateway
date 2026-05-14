@@ -511,15 +511,37 @@ HOME_DEFAULTS = {
     "phone": {"ipv6": -1, "tailscale": -1, "ipv4": 10},
 }
 
+def _auto_mode_by_time():
+    """根据当前时间返回推荐 mode: 8-20点=office(IPv6优先), 其他=home(Tailscale优先)"""
+    h = datetime.now().hour
+    if 8 <= h < 20:
+        return "office"
+    return "home"
+
+def _get_default_devices(mode: str):
+    """获取指定模式的默认设备优先级配置"""
+    defaults_map = {"office": OFFICE_DEFAULTS, "remote": REMOTE_DEFAULTS, "home": HOME_DEFAULTS}
+    defaults = defaults_map.get(mode, OFFICE_DEFAULTS)
+    return {d["id"]: dict(defaults[d["id"]]) for d in DEVICES}
+
 def _load_net_config():
-    """加载网络配置"""
+    """加载网络配置，若未配置则根据当前时间自动选择默认"""
+    cfg = None
     if os.path.exists(NET_CONFIG_FILE):
         try:
             with open(NET_CONFIG_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                cfg = json.load(f)
         except:
             pass
-    return {"mode": "office", "devices": {d["id"]: dict(OFFICE_DEFAULTS[d["id"]]) for d in DEVICES}}
+    if cfg is None or cfg.get("mode") == "auto":
+        # 未配置或自动模式 → 按时间自动选择
+        auto_mode = _auto_mode_by_time()
+        if cfg is None:
+            cfg = {"mode": "auto", "devices": _get_default_devices(auto_mode)}
+        else:
+            cfg["devices"] = _get_default_devices(auto_mode)
+        cfg["auto_mode"] = auto_mode
+    return cfg
 
 def _save_net_config(cfg):
     """保存网络配置"""
@@ -536,6 +558,8 @@ async def api_network_config_get(request):
         "devices": cfg["devices"],
         "device_list": DEVICES,
         "net_types": NET_TYPES,
+        "auto_mode": cfg.get("auto_mode", ""),
+        "current_hour": datetime.now().hour,
     })
 
 
