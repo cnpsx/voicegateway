@@ -31,16 +31,25 @@ CERT_DIR = os.path.expanduser("~/report2db/certs")
 SSL_CERT = os.path.join(CERT_DIR, "cert.pem")
 SSL_KEY = os.path.join(CERT_DIR, "key.pem")
 
-# ASR — A3B llama.cpp
-ASR_URL = os.environ.get("ASR_URL", "http://100.80.121.48:12026/v1/audio/transcriptions")
+# ASR — A3B llama.cpp (三路候选)
+ASR_CANDIDATES = [
+    {"label": "ipv6", "url": "http://[2408:8256:3500:1f3:a66e:47a9:2ac0:e5dc]:12026/v1/audio/transcriptions"},
+    {"label": "tailscale", "url": "http://100.80.121.48:12026/v1/audio/transcriptions"},
+    {"label": "ipv4", "url": "http://192.168.1.21:12026/v1/audio/transcriptions"},
+]
+ASR_URL = ASR_CANDIDATES[1]["url"]  # 默认 Tailscale，会被 _pick_best_url 覆盖
 
-# TTS — Qwen 8B on LM Studio (Win10)
-TTS_URL = os.environ.get("TTS_URL", "http://100.80.121.48:1234/v1/chat/completions")
-TTS_KEY = "sk-lm-VO1DtDh1:u7vi9gihLIlBIaWOEt08"
+# TTS — Qwen 8B on LM Studio (Win10) (三路候选)
+TTS_CANDIDATES = [
+    {"label": "ipv6", "url": "http://[2408:8256:3500:1f3:a66e:47a9:2ac0:e5dc]:1234/v1/chat/completions"},
+    {"label": "tailscale", "url": "http://100.80.121.48:1234/v1/chat/completions"},
+    {"label": "ipv4", "url": "http://192.168.1.5:1234/v1/chat/completions"},
+]
+TTS_URL = TTS_CANDIDATES[1]["url"]
+TTS_KEY = "***:u7vi9gihLIlBIaWOEt08"
 TTS_MODEL = "tts2-emo-qwen3-8b-192k"
 
-# Hermes (DeepSeek)
-# Hermes API Server（本地，让我能使用工具和记忆）
+# Hermes API Server（本地）
 HERMES_API_URL = "http://127.0.0.1:8642/v1/chat/completions"
 HERMES_API_KEY="voice-mid-bridge-key"
 
@@ -100,14 +109,15 @@ class VoiceChat:
 chat = VoiceChat()
 
 async def _send_to_asr(audio_path: str):
-    """发送 wav 文件到 A3B llama.cpp ASR，结果同步到聊天记录"""
+    """发送 wav 文件到 A3B llama.cpp ASR，自动选路"""
+    asr_url = _pick_best_url(ASR_CANDIDATES, device_id="a3b", service="asr")
     async with aiohttp.ClientSession() as session:
         with open(audio_path, "rb") as f:
             form = aiohttp.FormData()
             form.add_field("file", f, filename="audio.wav", content_type="audio/wav")
             form.add_field("model", "whisper-1")
             form.add_field("language", "zh")
-            async with session.post(ASR_URL, data=form, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+            async with session.post(asr_url, data=form, timeout=aiohttp.ClientTimeout(total=30)) as resp:
                 if resp.status != 200:
                     err_text = await resp.text()
                     return web.json_response({"error": f"ASR 失败: {err_text}"}, status=502)
@@ -268,7 +278,8 @@ async def api_tts(request):
                     _buf.write(_chunk["data"])
             return _buf.getvalue()
 
-        # 调用 Qwen TTS
+        # 调用 Qwen TTS（自动选路）
+        tts_url = _pick_best_url(TTS_CANDIDATES, device_id="tts", service="tts")
         payload = {
             "model": TTS_MODEL,
             "messages": [{"role": "user", "content": f"<|tts|>{text}"}],
@@ -282,7 +293,7 @@ async def api_tts(request):
 
         async with aiohttp.ClientSession() as session:
             try:
-                async with session.post(TTS_URL, json=payload, headers=headers,
+                async with session.post(tts_url, json=payload, headers=headers,
                                         timeout=aiohttp.ClientTimeout(total=30)) as resp:
                     if resp.status != 200:
                         err_text = await resp.text()
@@ -293,7 +304,7 @@ async def api_tts(request):
 
                     wav_data = _decode_qwen_tts(tokens_text)
                     if not wav_data:
-                        log.warning("Qwen TTS 解码失败，回退 edge-tts")
+                        log.warning(f"Qwen TTS 解码失败 ({tts_url.split('/')[2]}), 回退 edge-tts")
                         wav_data = await _edge_fallback_bytes()
 
                     return web.Response(
@@ -550,6 +561,46 @@ def _save_net_config(cfg):
         json.dump(cfg, f, ensure_ascii=False, indent=2)
 
 
+def _pick_best_url(candidates, device_id="a3b", service="asr"):
+    """
+    根据网络配置的优先级排序候选 URL，返回最佳 URL。
+    优先级逻辑：
+    1. 加载网络配置，读取各设备各网络类型的优先级分
+    2. 对每个候选，用 source_device(当前服务器) 和 target_device 的优先级取 min
+    3. 按优先级降序排列，返回最高优先级的 URL
+    """
+    cfg = _load_net_config()
+    devices_cfg = cfg.get("devices", {})
+
+    # source = bt2（当前服务器）
+    src_cfg = devices_cfg.get("bt2", {"ipv6": 6, "tailscale": 5, "ipv4": 10})
+    dst_cfg = devices_cfg.get(device_id, {"ipv6": 6, "tailscale": 5, "ipv4": 10})
+
+    scored = []
+    for cand in candidates:
+        label = cand["label"]
+        sp = src_cfg.get(label, 0)
+        dp = dst_cfg.get(label, 0)
+        if sp >= 0 and dp >= 0:
+            priority = min(sp, dp)  # 两端都可达才可用
+            scored.append((priority, label, cand["url"]))
+
+    # 按优先级降序
+    scored.sort(key=lambda x: x[0], reverse=True)
+
+    if not scored:
+        log.warning(f"没有可用网络路径: {service}, 使用默认")
+        return candidates[0]["url"]
+
+    best = scored[0]
+    if best[0] <= 0:
+        log.warning(f"所有路径优先级<=0，用第一个: {candidates[0]['url']}")
+        return candidates[0]["url"]
+
+    log.info(f"选路 [{service}]: {best[1]} (优先级 {best[0]})")
+    return best[2]
+
+
 async def api_network_config_get(request):
     """获取当前网络配置"""
     cfg = _load_net_config()
@@ -568,10 +619,21 @@ async def api_network_config_save(request):
     try:
         body = await request.json()
         cfg = _load_net_config()
-        cfg["mode"] = body.get("mode", cfg["mode"])
-        cfg["devices"] = body.get("devices", cfg["devices"])
+        old_mode = cfg.get("mode", "auto")
+        cfg["mode"] = body.get("mode", old_mode)
+        # 如果传了devices就覆盖
+        if "devices" in body:
+            cfg["devices"] = body["devices"]
+        # 如果mode是auto，按时间重新计算默认值但不覆盖用户之前的调整
+        if cfg["mode"] == "auto":
+            auto_mode = _auto_mode_by_time()
+            cfg["auto_mode"] = auto_mode
+            # 仅当设备配置未传入时使用时间默认值
+            if "devices" not in body:
+                cfg["devices"] = _get_default_devices(auto_mode)
         _save_net_config(cfg)
-        return web.json_response({"status": "success"})
+        return web.json_response({"status": "success", "mode": cfg["mode"],
+                                   "auto_mode": cfg.get("auto_mode", "")})
     except Exception as e:
         return web.json_response({"error": str(e)}, status=500)
 
