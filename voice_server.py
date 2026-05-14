@@ -23,7 +23,7 @@ from aiohttp import web
 # ══════════════════════════════════════════
 # 配置
 # ══════════════════════════════════════════
-HOST = "::"
+HOST = "0.0.0.0"
 PORT = 12054        # HTTP
 HTTPS_PORT = 12056  # HTTPS
 
@@ -32,17 +32,17 @@ SSL_CERT = os.path.join(CERT_DIR, "cert.pem")
 SSL_KEY = os.path.join(CERT_DIR, "key.pem")
 
 # ASR — A3B llama.cpp
-ASR_URL = "http://127.0.0.1:12026/v1/audio/transcriptions"
+ASR_URL = os.environ.get("ASR_URL", "http://100.80.121.48:12026/v1/audio/transcriptions")
 
 # TTS — Qwen 8B on LM Studio (Win10)
-TTS_URL = "http://192.168.1.5:1234/v1/chat/completions"
+TTS_URL = os.environ.get("TTS_URL", "http://100.80.121.48:1234/v1/chat/completions")
 TTS_KEY = "sk-lm-VO1DtDh1:u7vi9gihLIlBIaWOEt08"
 TTS_MODEL = "tts2-emo-qwen3-8b-192k"
 
 # Hermes (DeepSeek)
 # Hermes API Server（本地，让我能使用工具和记忆）
 HERMES_API_URL = "http://127.0.0.1:8642/v1/chat/completions"
-HERMES_API_KEY = "sk-123456"
+HERMES_API_KEY="voice-mid-bridge-key"
 
 # 历史记录目录
 HISTORY_DIR = os.path.expanduser("~/report2db/voice_history")
@@ -72,8 +72,11 @@ class VoiceChat:
     def _save(self):
         today = datetime.now().strftime("%Y-%m-%d")
         path = os.path.join(HISTORY_DIR, f"{today}.json")
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(self.messages, f, ensure_ascii=False, indent=2)
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(self.messages, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            log.warning(f"历史记录保存跳过: {e}")
 
     def add(self, role: str, content: str, summary: str = ""):
         item = {
@@ -253,6 +256,18 @@ async def api_tts(request):
         if not text:
             return web.json_response({"error": "缺少 text"}, status=400)
 
+        async def _edge_fallback_bytes():
+            import edge_tts as _et
+            clean = re.sub(r'[\U0001F300-\U0001FAFF\U0001F600-\U0001F64F\U0001F680-\U0001F6FF\u2600-\u26FF\u2700-\u27BF\u2000-\u206F\u2E00-\u2E7F\u2B00-\u2BFF\u3000-\u303F]', '', text)
+            if not clean.strip():
+                return b""
+            _com = _et.Communicate(clean, "zh-CN-XiaoxiaoNeural")
+            _buf = io.BytesIO()
+            async for _chunk in _com.stream():
+                if _chunk["type"] == "audio":
+                    _buf.write(_chunk["data"])
+            return _buf.getvalue()
+
         # 调用 Qwen TTS
         payload = {
             "model": TTS_MODEL,
@@ -266,30 +281,29 @@ async def api_tts(request):
         }
 
         async with aiohttp.ClientSession() as session:
-            async with session.post(TTS_URL, json=payload, headers=headers,
-                                    timeout=aiohttp.ClientTimeout(total=30)) as resp:
-                if resp.status != 200:
-                    err_text = await resp.text()
-                    return web.json_response({"error": f"TTS 失败: {err_text}"}, status=502)
+            try:
+                async with session.post(TTS_URL, json=payload, headers=headers,
+                                        timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                    if resp.status != 200:
+                        err_text = await resp.text()
+                        return web.json_response({"error": f"TTS 失败: {err_text}"}, status=502)
 
-                result = await resp.json()
-                tokens_text = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    result = await resp.json()
+                    tokens_text = result.get("choices", [{}])[0].get("message", {}).get("content", "")
 
-                wav_data = _decode_qwen_tts(tokens_text)
-                if not wav_data:
-                    # Qwen 解码失败，用 edge-tts 直接返回 wav
-                    log.warning("Qwen TTS 解码失败，回退 edge-tts")
-                    import edge_tts as _et
-                    clean = re.sub(r'[\U0001F300-\U0001FAFF\U0001F600-\U0001F64F\U0001F680-\U0001F6FF\u2600-\u26FF\u2700-\u27BF\u2000-\u206F\u2E00-\u2E7F\u2B00-\u2BFF\u3000-\u303F]', '', text)
-                    if clean.strip():
-                        _com = _et.Communicate(clean, "zh-CN-XiaoxiaoNeural")
-                        _buf = io.BytesIO()
-                        async for _chunk in _com.stream():
-                            if _chunk["type"] == "audio":
-                                _buf.write(_chunk["data"])
-                        wav_data = _buf.getvalue()
+                    wav_data = _decode_qwen_tts(tokens_text)
+                    if not wav_data:
+                        log.warning("Qwen TTS 解码失败，回退 edge-tts")
+                        wav_data = await _edge_fallback_bytes()
 
-                # 返回 wav
+                    return web.Response(
+                        body=wav_data,
+                        content_type="audio/wav",
+                        headers={"Access-Control-Allow-Origin": "*"}
+                    )
+            except (aiohttp.ClientConnectorError, aiohttp.ClientOSError, OSError) as e:
+                log.warning(f"Qwen TTS 连接失败，回退 edge-tts: {e}")
+                wav_data = await _edge_fallback_bytes()
                 return web.Response(
                     body=wav_data,
                     content_type="audio/wav",
@@ -340,8 +354,6 @@ async def api_tts_fallback(request):
 # ══════════════════════════════════════════
 # LLM 对话（Hermes Gateway）
 # ══════════════════════════════════════════
-HERMES_API_URL = "http://127.0.0.1:8642/v1/chat/completions"
-HERMES_API_KEY = "voice-mid-bridge-key"
 
 async def api_chat(request):
     """接收文字，调用 Hermes Gateway 生成回答，返回完整文本"""
@@ -562,8 +574,6 @@ async def api_network_preview(request):
     # 各设备的实际 IP 地址
     DEVICE_ADDRS = {
         "bt2": {"ipv4": "192.168.1.21", "ipv6": "2408:8256:3500:1f3:a66e:47a9:2ac0:e5dc", "tailscale": "100.80.121.48"},
-        "asr": {"ipv4": "192.168.1.21", "ipv6": "2408:8256:3500:1f3:a66e:47a9:2ac0:e5dc", "tailscale": "100.80.121.48"},
-        "chat": {"ipv4": "127.0.0.1", "ipv6": "::1", "tailscale": ""},
         "a3b": {"ipv4": "192.168.1.21", "ipv6": "2408:8256:3500:1f3:a66e:47a9:2ac0:e5dc", "tailscale": "100.80.121.48"},
         "tts": {"ipv4": "192.168.1.5", "ipv6": "", "tailscale": "100.73.220.74"},
         "company-pc": {"ipv4": "192.168.1.5", "ipv6": "2408:8256:3500:1f3:a66e:47a9:2ac0:e5dc", "tailscale": "100.73.220.74"},
@@ -631,66 +641,38 @@ async def api_network_preview(request):
     return web.json_response({"previews": previews})
 
 
-# ══════════════════════════════════════════
-# 诊断 API — 检测各服务端口是否可通
-# ══════════════════════════════════════════
-SERVICE_PORTS = {
-    "asr": {"host": "127.0.0.1", "port": 12026, "name": "ASR (A3B llama.cpp)", "desc": "语音识别服务"},
-    "hermes": {"host": "127.0.0.1", "port": 8642, "name": "Hermes Gateway", "desc": "LLM 对话服务"},
-    "tts": {"host": "192.168.1.5", "port": 1234, "name": "TTS (Qwen/Edge)", "desc": "语音合成服务"},
-}
-
-
 async def api_diag_check(request):
-    """诊断：探测指定服务的端口是否可通"""
-    svc = request.query.get("service", "")
-    svc_cfg = SERVICE_PORTS.get(svc)
-    if not svc_cfg:
-        return web.json_response({"error": f"未知服务: {svc}"}, status=400)
+    service = (request.query.get("service") or "").strip().lower()
+    if service not in ("asr", "tts", "hermes"):
+        return web.json_response({"alive": False, "error": "service 必须是 asr/tts/hermes"}, status=400)
+
+    from urllib.parse import urlparse
+
+    url_map = {
+        "asr": ASR_URL,
+        "tts": TTS_URL,
+        "hermes": HERMES_API_URL,
+    }
+    u = urlparse(url_map[service])
+    host = u.hostname or ""
+    port = int(u.port or (443 if u.scheme == "https" else 80))
+
     try:
-        _, writer = await asyncio.wait_for(
-            asyncio.open_connection(svc_cfg["host"], svc_cfg["port"]),
-            timeout=3
-        )
+        reader, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=3.0)
         writer.close()
-        await writer.wait_closed()
-        return web.json_response({
-            "service": svc,
-            "alive": True,
-            "host": svc_cfg["host"],
-            "port": svc_cfg["port"],
-        })
-    except (OSError, asyncio.TimeoutError) as e:
-        return web.json_response({
-            "service": svc,
-            "alive": False,
-            "host": svc_cfg["host"],
-            "port": svc_cfg["port"],
-            "error": str(e),
-        })
-
-
-async def api_diag_summary(request):
-    """诊断：一次性检测所有服务，返回结果"""
-    results = {}
-    for key, cfg in SERVICE_PORTS.items():
         try:
-            _, writer = await asyncio.wait_for(
-                asyncio.open_connection(cfg["host"], cfg["port"]),
-                timeout=3
-            )
-            writer.close()
             await writer.wait_closed()
-            results[key] = {"alive": True, "host": cfg["host"], "port": cfg["port"]}
-        except (OSError, asyncio.TimeoutError) as e:
-            results[key] = {"alive": False, "host": cfg["host"], "port": cfg["port"], "error": str(e)}
-    return web.json_response({"services": results})
-
-
+        except Exception:
+            pass
+        alive, err = True, ""
+    except Exception as e:
+        alive, err = False, str(e)
+    return web.json_response({"service": service, "alive": alive, "host": host, "port": port, "error": err})
 # 页面路由
 # ══════════════════════════════════════════
 VOICE_HTML = None
 NETWORK_HTML = None
+TEST_HTML = None
 
 
 async def voice_page(request):
@@ -703,10 +685,16 @@ async def voice_page(request):
 
 
 
-TEST_HTML = open('/tmp/test_page.html').read()
-
 async def test_page(request):
-    return web.Response(text=TEST_HTML, content_type='text/html', charset='utf-8')
+    global TEST_HTML
+    if TEST_HTML is None:
+        html_path = os.path.join(os.path.dirname(__file__), "test_page.html")
+        if os.path.exists(html_path):
+            with open(html_path, "r", encoding="utf-8") as f:
+                TEST_HTML = f.read()
+        else:
+            TEST_HTML = "<html><body>OK</body></html>"
+    return web.Response(text=TEST_HTML, content_type="text/html", charset="utf-8")
 
 async def network_page(request):
     global NETWORK_HTML
@@ -789,14 +777,12 @@ def main():
     app.router.add_post("/api/clear_current_chat", api_clear_current_chat)
     app.router.add_get("/api/history/dates", api_history_dates)
     app.router.add_get("/api/history/by-date", api_history_by_date)
+    app.router.add_get("/api/diag/check", api_diag_check)
     # 网络管理 API
     app.router.add_get("/api/network/config", api_network_config_get)
     app.router.add_post("/api/network/config", api_network_config_save)
     app.router.add_get("/api/network/defaults", api_network_defaults)
     app.router.add_get("/api/network/preview", api_network_preview)
-    # 诊断 API
-    app.router.add_get("/api/diag/check", api_diag_check)
-    app.router.add_get("/api/diag/summary", api_diag_summary)
 
     # HTTP
     runner = web.AppRunner(app)
