@@ -1,0 +1,990 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>乩情总控室</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", sans-serif;
+  background: #0a0a0f;
+  color: #e0e0e0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ── 布局 ── */
+.app { display: flex; flex-direction: column; height: 100vh; }
+
+/* ── 顶部状态栏 ── */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 16px;
+  background: rgba(255,255,255,0.03);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  flex-shrink: 0;
+}
+.topbar h1 { font-size: 16px; font-weight: 600; letter-spacing: 2px; }
+.topbar .round-badge {
+  background: rgba(124,92,252,0.2);
+  border: 1px solid rgba(124,92,252,0.3);
+  border-radius: 12px;
+  padding: 2px 12px;
+  font-size: 13px;
+  color: #7C5CFC;
+}
+
+/* ── 四角色状态 ── */
+.role-bar {
+  display: flex; gap: 6px; padding: 8px 16px;
+  background: rgba(255,255,255,0.02);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+.role-chip {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 12px; border-radius: 14px;
+  font-size: 12px; font-weight: 500;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.04);
+  white-space: nowrap;
+  transition: all .3s;
+}
+.role-chip .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  transition: all .3s;
+}
+.role-chip.spoken { opacity: 0.5; }
+.role-chip.spoken .dot { background: #555 !important; }
+.role-chip.active { border-color: inherit; box-shadow: 0 0 12px rgba(255,255,255,0.05); }
+
+/* ── 消息区 ── */
+.msgs {
+  flex: 1; overflow-y: auto; padding: 12px 16px;
+  scroll-behavior: smooth;
+}
+.msgs::-webkit-scrollbar { width: 4px; }
+.msgs::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+.msg {
+  margin-bottom: 12px;
+  animation: fadeIn .3s ease;
+}
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+.msg .header {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 4px;
+}
+.msg .name {
+  font-size: 12px; font-weight: 600; letter-spacing: 0.5px;
+}
+.msg .time {
+  font-size: 10px; color: rgba(255,255,255,0.3);
+}
+.msg .bubble {
+  display: inline-block;
+  padding: 8px 14px;
+  border-radius: 4px 12px 12px 12px;
+  font-size: 14px; line-height: 1.6;
+  max-width: 85%;
+  word-break: break-word;
+  white-space: pre-wrap;
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.msg .media {
+  margin-top: 6px; border-radius: 8px; overflow: hidden;
+  max-width: 100%;
+}
+    .msg .media img { max-width: 100%; max-height: 400px; display: block; border-radius: 8px; }
+
+/* ── 代码框 ── */
+.code-box {
+  margin-top: 8px;
+  background: #0d0d14;
+  border: 1px solid rgba(124,92,252,0.2);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.code-box .code-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 4px 12px;
+  background: rgba(124,92,252,0.08);
+  font-size: 11px; color: rgba(255,255,255,0.4);
+  border-bottom: 1px solid rgba(124,92,252,0.1);
+}
+.code-box .code-body {
+  padding: 12px;
+  overflow-x: auto;
+  font-family: "Cascadia Code", "Fira Code", "JetBrains Mono", "Consolas", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre;
+  tab-size: 4;
+}
+.code-box .code-body .line {
+  display: block;
+  min-height: 1.5em;
+}
+.code-box .code-body .line::before {
+  content: attr(data-ln);
+  display: inline-block;
+  width: 32px;
+  margin-right: 16px;
+  text-align: right;
+  color: rgba(255,255,255,0.15);
+  user-select: none;
+}
+.code-box .copy-btn {
+  background: rgba(255,255,255,0.06);
+  border: none;
+  color: rgba(255,255,255,0.4);
+  padding: 2px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+}
+.code-box .copy-btn:hover { background: rgba(255,255,255,0.12); color: #fff; }
+
+/* ── 轮次分隔线 ── */
+.round-divider {
+  text-align: center; margin: 16px 0; position: relative;
+  color: rgba(255,255,255,0.2); font-size: 11px;
+}
+.round-divider::before, .round-divider::after {
+  content: ''; position: absolute; top: 50%; width: 35%;
+  height: 1px; background: rgba(255,255,255,0.06);
+}
+.round-divider::before { left: 0; }
+.round-divider::after { right: 0; }
+
+/* ── 输入区 ── */
+.input-area {
+  padding: 8px 12px 12px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  background: rgba(255,255,255,0.02);
+  flex-shrink: 0;
+}
+.input-row {
+  display: flex; gap: 8px; align-items: flex-end;
+}
+.input-row textarea {
+  flex: 1;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: #e0e0e0;
+  font-size: 14px;
+  resize: none;
+  outline: none;
+  min-height: 40px;
+  max-height: 120px;
+  font-family: inherit;
+  transition: border .2s;
+}
+.input-row textarea:focus { border-color: rgba(124,92,252,0.4); }
+
+.btn {
+  padding: 10px 18px;
+  border: none;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all .2s;
+  white-space: nowrap;
+}
+.btn:active { transform: scale(0.96); }
+.btn-send { background: #7C5CFC; color: #fff; }
+.btn-send:disabled { opacity: 0.3; cursor: not-allowed; }
+
+.toolbar {
+  display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap;
+}
+.toolbar .btn {
+  padding: 6px 12px; font-size: 12px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.7);
+  flex: 1 0 auto;
+}
+.toolbar .btn:hover { background: rgba(255,255,255,0.1); }
+  .toolbar .btn-camera { color: #4FC3F7; }
+  .toolbar .btn-mic { color: #81C784; }
+  .toolbar .btn-her { color: #ff4444; font-weight: 700; border-color: rgba(255,68,68,0.3); }
+  .toolbar .btn-next { color: #FFB74D; }
+  
+  /* 用户气泡：金色五星 */
+  .msg.user .sender { color: #FFD700; }
+  .msg.user .sender::before { content: "⭐"; margin-right: 2px; }
+
+/* ── 角色选择弹出 ── */
+.role-picker {
+  display: none;
+  position: absolute;
+  bottom: 100%;
+  left: 12px;
+  background: #1a1a24;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px;
+  padding: 8px;
+  gap: 4px;
+  z-index: 100;
+}
+.role-picker.show { display: flex; flex-direction: column; }
+.role-picker .rp-item {
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background .2s;
+}
+.role-picker .rp-item:hover { background: rgba(255,255,255,0.08); }
+
+/* ── 响应式 ── */
+@media (max-width: 600px) {
+  .topbar { padding: 6px 10px; flex-wrap: wrap; gap: 4px; }
+  .topbar h1 { font-size: 13px; }
+  .topbar > div { gap: 4px; flex-wrap: wrap; }
+  .topbar .round-badge { font-size: 10px; padding: 2px 6px; }
+  .topbar button { padding: 3px 6px !important; font-size: 10px !important; }
+  .role-bar { padding: 4px 10px; gap: 3px; overflow-x: auto; }
+  .role-chip { font-size: 10px; padding: 2px 6px; }
+  .msgs { padding: 6px 10px; }
+  .msg .bubble { font-size: 12px; max-width: 95%; }
+  .input-area { padding: 4px 8px 8px; }
+  .input-row textarea { font-size: 12px; padding: 8px; }
+  .input-row button { font-size: 11px; padding: 8px 8px; }
+  .toolbar { gap: 4px; margin-top: 6px; }
+  .toolbar .btn { padding: 8px 6px; font-size: 11px; flex: 1; text-align: center; min-width: 0; }
+  .toolbar .btn#btnHer { font-size: 13px; font-weight: 800; padding: 8px 4px; }
+  .input-row .btn-emoji { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- 顶部 -->
+    <div class="topbar">
+        <h1>⚡ 乩情总控室</h1>
+        <div style="display:flex;gap:0;">
+            <a href="/" style="text-decoration:none;"><button class="tab" style="padding:6px 14px;font-size:12px;background:rgba(124,92,252,0.1);color:#7C5CFC;border:none;border-radius:8px 8px 0 0;font-weight:600;cursor:pointer;">💬 总控室</button></a>
+            <a href="http://192.168.1.21:12054/voice" target="_blank" style="text-decoration:none;"><button class="tab" style="padding:6px 14px;font-size:12px;background:rgba(255,255,255,0.02);color:rgba(255,255,255,0.5);border:none;border-radius:8px 8px 0 0;cursor:pointer;">🎙️ 语音</button></a>
+            <a href="/admin" style="text-decoration:none;"><button class="tab" style="padding:6px 14px;font-size:12px;background:rgba(255,255,255,0.02);color:rgba(255,255,255,0.5);border:none;border-radius:8px 8px 0 0;cursor:pointer;">⚙️ 管理</button></a>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+            <span class="round-badge" id="roundBadge">第 0 轮</span>
+            <a href="/admin" style="text-decoration:none;">
+                <button class="btn" style="padding:4px 10px;font-size:12px;background:rgba(124,92,252,0.2);border:1px solid rgba(124,92,252,0.3);color:#7C5CFC;">⚙️ 管理</button>
+            </a>
+            <button class="btn" id="btnClear" style="padding:4px 10px;font-size:12px;background:rgba(255,165,0,0.1);border:1px solid rgba(255,165,0,0.2);color:#ffb74d;" title="清空聊天">🧹 清空</button>
+            <button class="btn" id="btnLogout" style="padding:4px 10px;font-size:12px;background:rgba(255,68,68,0.1);border:1px solid rgba(255,68,68,0.2);color:#ff4444;" title="退出登录">🚪 退出</button>
+        </div>
+    </div>
+
+  <!-- IP档位控制（仅管理员可见） -->
+  <div id="ipModeControl" style="display:none;padding:8px 16px;background:rgba(124,92,252,0.1);border-bottom:1px solid rgba(124,92,252,0.2);">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <span style="color:#e0e0e0;font-size:13px;">IP档位控制：</span>
+      <button class="btn" id="btnIpAuto" style="padding:4px 12px;font-size:12px;">自动（8-20点IPv6优先，20-8点IPv4优先）</button>
+      <button class="btn" id="btnIpv6" style="padding:4px 12px;font-size:12px;">强制IPv6</button>
+      <button class="btn" id="btnIpv4" style="padding:4px 12px;font-size:12px;">强制IPv4</button>
+      <button class="btn" id="btnTailscale" style="padding:4px 12px;font-size:12px;">Tailscale备用</button>
+      <span id="currentIpMode" style="color:#7C5CFC;font-size:13px;font-weight:600;"></span>
+    </div>
+  </div>
+
+  <!-- 重要提示横幅 -->
+  <div id="noticeBanner" style="padding:8px 16px;background:rgba(255,193,7,0.15);border-bottom:1px solid rgba(255,193,7,0.3);">
+    <span style="color:#ffc107;font-size:13px;font-weight:600;">⚠️ 重要规定：</span>
+    <span style="color:#e0e0e0;font-size:13px;">同一时刻只能使用一个档位的IP地址类型（8-20点优先IPv6，20-8点优先IPv4，Tailscale备用），否则可能无法正常使用TTS和A3B！</span>
+  </div>
+
+  <!-- 角色状态条 -->
+  <div class="role-bar" id="roleBar"></div>
+
+  <!-- 消息区 -->
+  <div class="msgs" id="msgs"></div>
+
+  <!-- 输入区 -->
+  <div class="input-area">
+    <div style="position:relative">
+      <div class="role-picker" id="rolePicker"></div>
+    </div>
+    <div class="input-row">
+      <button class="btn" id="btnRole" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);color:#4FC3F7;font-size:12px;padding:10px 10px;min-width:40px;" title="切换角色">👤</button>
+      <textarea id="inputMsg" rows="1" placeholder="按 Enter 发送..." maxlength="2000"></textarea>
+      <button class="btn btn-send" id="btnSend" disabled>发送</button>
+    </div>
+    <div class="toolbar">
+      <button class="btn btn-camera" id="btnCamera">📷 拍照</button>
+      <button class="btn btn-mic" id="btnMic">🎤 录音</button>
+      <button class="btn" id="btnHer" style="background:rgba(255,68,68,0.12);border:1px solid rgba(255,68,68,0.25);color:#ff4444;font-weight:700;font-size:13px;padding:8px 14px;">🔴 HER</button>
+      <button class="btn btn-next" id="btnNext">⏭ 下一轮</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════
+// 状态
+// ══════════════════════════════════════════
+const ROLES = {
+  user:   { name: "你",     color: "#4FC3F7", order: 0 },
+  hermes: { name: "Hermes", color: "#7C5CFC", order: 1 },
+  pro:    { name: "pro",    color: "#FFB74D", order: 2 },
+  chat:   { name: "chat",   color: "#81C784", order: 3 },
+  a3b:    { name: "⭐A3B",  color: "#FFD700", order: 4 },
+};
+const ROLE_ORDER = ["user", "hermes", "pro", "chat", "a3b"];
+
+let state = null;
+let ws = null;
+let currentRole = "user";
+let recording = false;
+let mediaRecorder = null;
+let audioChunks = [];
+let reconnectTimer = null;
+
+// ══════════════════════════════════════════
+// DOM
+// ══════════════════════════════════════════
+const msgsEl = document.getElementById("msgs");
+const roleBar = document.getElementById("roleBar");
+const roundBadge = document.getElementById("roundBadge");
+const inputMsg = document.getElementById("inputMsg");
+const btnSend = document.getElementById("btnSend");
+const btnRole = document.getElementById("btnRole");
+const rolePicker = document.getElementById("rolePicker");
+const btnCamera = document.getElementById("btnCamera");
+const btnMic = document.getElementById("btnMic");
+const btnNext = document.getElementById("btnNext");
+
+// ══════════════════════════════════════════
+// WebSocket 连接
+// ══════════════════════════════════════════
+function connectWS() {
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const url = `${proto}//${window.location.host}/ws`;
+  
+  if (ws) { ws.close(); }
+  ws = new WebSocket(url);
+  
+  ws.onopen = () => {
+    console.log("WS 已连接");
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  };
+  ws.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+    if (data.type === "state") {
+      state = data.data;
+      render();
+    } else if (data.type === "tts") {
+      // 收到 TTS 音频，自动播放
+      playTTS(data.audio_b64, data.role);
+    }
+  };
+  ws.onclose = () => {
+    console.log("WS 断开，3s 后重连");
+    reconnectTimer = setTimeout(connectWS, 3000);
+  };
+  ws.onerror = () => { ws.close(); };
+}
+
+// ══════════════════════════════════════════
+// 渲染
+// ══════════════════════════════════════════
+function render() {
+  if (!state) return;
+  
+  // 轮次
+  roundBadge.textContent = `第 ${state.round} 轮`;
+  
+  // 角色状态
+  roleBar.innerHTML = "";
+  ROLE_ORDER.forEach(r => {
+    const info = ROLES[r];
+    const roleState = state.roles[r] || {};
+    const chip = document.createElement("div");
+    chip.className = "role-chip" + (roleState.spoken ? " spoken" : "");
+    chip.style.borderColor = info.color + "33";
+    chip.innerHTML = `<span class="dot" style="background:${roleState.spoken ? '#555' : info.color}"></span>${info.name}`;
+    if (r === currentRole) chip.classList.add("active");
+    chip.onclick = () => { currentRole = r; updateRoleBtn(); render(); };
+    roleBar.appendChild(chip);
+  });
+
+  // 消息
+  msgsEl.innerHTML = "";
+  let lastRound = -1;
+  state.messages.forEach(m => {
+    if (m.round !== lastRound) {
+      const div = document.createElement("div");
+      div.className = "round-divider";
+      div.textContent = `── 第 ${m.round} 轮 ──`;
+      msgsEl.appendChild(div);
+      lastRound = m.round;
+    }
+    const msg = document.createElement("div");
+    msg.className = "msg";
+    msg.innerHTML = `
+      <div class="header">
+        <span class="name" style="color:${m.color}">${m.name}</span>
+        <span class="time">${m.time}</span>
+      </div>
+      <div class="bubble" style="border-left:3px solid ${m.color};background:${m.color}08;border-color:${m.color}15;">
+        ${renderText(m.text)}
+      </div>
+    `;
+    if (m.media && m.media.type === "image") {
+      const mediaDiv = document.createElement("div");
+      mediaDiv.className = "media";
+      mediaDiv.innerHTML = `<img src="data:image/jpeg;base64,${m.media.data}">`;
+      msg.querySelector(".bubble").after(mediaDiv);
+    }
+
+    // 代码块渲染
+    const codeMatch = m.text.match(/```(\w*)\n([\s\S]*?)```/);
+    if (codeMatch) {
+      const lang = codeMatch[1] || "code";
+      const code = codeMatch[2];
+      // 保持原始缩进（行首不修改）
+      const lines = code.split("\n");
+      const codeBox = document.createElement("div");
+      codeBox.className = "code-box";
+      codeBox.innerHTML = `
+        <div class="code-header">
+          <span>${lang}</span>
+          <button class="copy-btn" onclick="navigator.clipboard.writeText(this.parentElement.nextElementSibling.textContent)">📋 复制</button>
+        </div>
+        <div class="code-body">${lines.map((l, i) => `<span class="line" data-ln="${i+1}">${escapeHtml(l) || ' '}</span>`).join("")}</div>
+      `;
+      // 替换气泡里的代码块标记
+      const bubble = msg.querySelector(".bubble");
+      bubble.textContent = bubble.textContent.replace(/```[\s\S]*?```/, "").trim();
+      bubble.after(codeBox);
+    }
+    msgsEl.appendChild(msg);
+  });
+  
+  // 滚动到底
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+  
+  // 更新发送按钮
+  updateSendBtn();
+}
+
+function updateRoleBtn() {
+  const info = ROLES[currentRole];
+  btnRole.style.color = info.color;
+  btnRole.textContent = info.name;
+}
+
+function updateSendBtn() {
+  if (!state) { btnSend.disabled = true; return; }
+  const roleState = state.roles[currentRole];
+  btnSend.disabled = !!(roleState && roleState.spoken);
+}
+
+// ══════════════════════════════════════════
+// 角色选择器
+// ══════════════════════════════════════════
+function showRolePicker() {
+  rolePicker.innerHTML = "";
+  rolePicker.classList.add("show");
+  ROLE_ORDER.forEach(r => {
+    const info = ROLES[r];
+    const item = document.createElement("div");
+    item.className = "rp-item";
+    item.style.color = info.color;
+    item.textContent = info.name;
+    item.onclick = () => {
+      currentRole = r;
+      updateRoleBtn();
+      render();
+      rolePicker.classList.remove("show");
+    };
+    rolePicker.appendChild(item);
+  });
+}
+
+btnRole.onclick = () => {
+  rolePicker.classList.toggle("show");
+};
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#btnRole") && !e.target.closest("#rolePicker")) {
+    rolePicker.classList.remove("show");
+  }
+});
+
+// ══════════════════════════════════════════
+// 发送消息
+// ══════════════════════════════════════════
+async function sendMsg() {
+  const text = inputMsg.value.trim();
+  if (!text) return;
+  if (!state) return;
+  const roleState = state.roles[currentRole];
+  if (roleState && roleState.spoken) {
+    alert(`${ROLES[currentRole].name} 本轮已发言`);
+    return;
+  }
+  
+  // 通过 REST API 发送
+  try {
+    const resp = await fetch("/api/speak", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({role: currentRole, text}),
+    });
+    const data = await resp.json();
+    if (data.error) {
+      alert(data.error);
+    } else {
+      // 自动复制到剪贴板
+      navigator.clipboard.writeText(text).catch(() => {});
+      inputMsg.value = "";
+      inputMsg.style.height = "auto";
+    }
+  } catch (e) {
+    alert("发送失败: " + e.message);
+  }
+}
+
+inputMsg.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    sendMsg();
+  }
+  // 自动调整高度
+  setTimeout(() => {
+    inputMsg.style.height = "auto";
+    inputMsg.style.height = Math.min(inputMsg.scrollHeight, 120) + "px";
+  }, 0);
+});
+
+inputMsg.addEventListener("input", () => {
+  btnSend.disabled = !inputMsg.value.trim();
+});
+
+btnSend.onclick = sendMsg;
+
+// ══════════════════════════════════════════
+// 拍照
+// ══════════════════════════════════════════
+btnCamera.onclick = async () => {
+  // 尝试用浏览器摄像头
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({video: true});
+    // 显示拍照预览
+    const video = document.createElement("video");
+    video.srcObject = stream;
+    video.play();
+    
+    // 建一个临时模态显示预览
+    const modal = document.createElement("div");
+    modal.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.9);z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;";
+    const videoEl = document.createElement("video");
+    videoEl.srcObject = stream;
+    videoEl.autoplay = true;
+    videoEl.style.cssText = "max-width:95%;max-height:70%;border-radius:8px;";
+    const btnRow = document.createElement("div");
+    btnRow.style.cssText = "margin-top:16px;display:flex;gap:12px;";
+    const captureBtn = document.createElement("button");
+    captureBtn.textContent = "📸 拍照";
+    captureBtn.className = "btn btn-send";
+    const cancelBtn = document.createElement("button");
+    cancelBtn.textContent = "取消";
+    cancelBtn.className = "btn";
+    cancelBtn.style.cssText = "background:rgba(255,255,255,0.1);color:#fff;";
+    btnRow.appendChild(captureBtn);
+    btnRow.appendChild(cancelBtn);
+    modal.appendChild(videoEl);
+    modal.appendChild(btnRow);
+    document.body.appendChild(modal);
+    
+    captureBtn.onclick = async () => {
+      // 截取视频帧
+      const canvas = document.createElement("canvas");
+      canvas.width = videoEl.videoWidth || 1920;
+      canvas.height = videoEl.videoHeight || 1080;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(videoEl, 0, 0);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+      
+      // 停止摄像头
+      stream.getTracks().forEach(t => t.stop());
+      modal.remove();
+      
+      // 通过 speak 接口发送图片（base64）
+      const resp = await fetch("/api/speak", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          role: currentRole,
+          text: "[📷 拍照]",
+          media: {type: "image", data: dataUrl.split(",")[1]}
+        }),
+      });
+    };
+    
+    cancelBtn.onclick = () => {
+      stream.getTracks().forEach(t => t.stop());
+      modal.remove();
+    };
+  } catch (e) {
+    // 降级：文件选择
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.onchange = async () => {
+      const file = input.files[0];
+      if (!file) return;
+      const formData = new FormData();
+      formData.append("file", file);
+      await fetch(`/api/upload-photo?role=${currentRole}`, {
+        method: "POST",
+        body: formData,
+      });
+    };
+    input.click();
+  }
+};
+// ══════════════════════════════════════════
+// 录音 (浏览器原生语音识别)
+// ══════════════════════════════════════════
+let recognition = null;
+let isListening = false;
+
+btnMic.onclick = async () => {
+  if (isListening) {
+    if (recognition) recognition.stop();
+    btnMic.textContent = "🎤 录音";
+    btnMic.style.borderColor = "rgba(255,255,255,0.08)";
+    btnMic.style.color = "#81C784";
+    isListening = false;
+    return;
+  }
+
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    alert("当前浏览器不支持语音识别，请使用 Chrome 或 Edge");
+    return;
+  }
+
+  recognition = new SpeechRecognition();
+  recognition.lang = "zh-CN";
+  recognition.continuous = false;
+  recognition.interimResults = true;
+  recognition.maxAlternatives = 1;
+
+  recognition.onresult = (event) => {
+    let interim = "";
+    let final = "";
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const transcript = event.results[i][0].transcript;
+      if (event.results[i].isFinal) {
+        final += transcript;
+      } else {
+        interim += transcript;
+      }
+    }
+    // 实时显示中间结果
+    if (final) {
+      inputMsg.value = final;
+      inputMsg.style.height = "auto";
+      inputMsg.style.height = Math.min(inputMsg.scrollHeight, 120) + "px";
+      btnSend.disabled = false;
+    }
+  };
+
+  recognition.onend = () => {
+    btnMic.textContent = "🎤 录音";
+    btnMic.style.borderColor = "rgba(255,255,255,0.08)";
+    btnMic.style.color = "#81C784";
+    isListening = false;
+    // 如果有识别结果，自动发送
+    if (inputMsg.value.trim()) {
+      sendMsg();
+    }
+  };
+
+  recognition.onerror = (event) => {
+    console.error("语音识别错误:", event.error);
+    btnMic.textContent = "🎤 录音";
+    btnMic.style.borderColor = "rgba(255,255,255,0.08)";
+    btnMic.style.color = "#81C784";
+    isListening = false;
+    if (event.error !== "no-speech" && event.error !== "aborted") {
+      alert("语音识别失败: " + event.error);
+    }
+  };
+
+  recognition.start();
+  isListening = true;
+  btnMic.textContent = "⏹ 录音中...";
+  btnMic.style.borderColor = "#ff4444";
+  btnMic.style.color = "#ff4444";
+};
+
+// ══════════════════════════════════════════
+// HER 录音按钮 — 语音转文字后提交到 Hermes 任务队列
+// ══════════════════════════════════════════
+let herRecognition = null;
+let herListening = false;
+const btnHer = document.getElementById("btnHer");
+
+btnHer.onclick = async () => {
+  if (herListening) {
+    if (herRecognition) herRecognition.stop();
+    btnHer.textContent = "🔴 HER";
+    btnHer.style.borderColor = "rgba(255,68,68,0.25)";
+    herListening = false;
+    return;
+  }
+
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    alert("当前浏览器不支持语音识别");
+    return;
+  }
+
+  herRecognition = new SpeechRecognition();
+  herRecognition.lang = "zh-CN";
+  herRecognition.continuous = false;
+  herRecognition.interimResults = false;
+  herRecognition.maxAlternatives = 1;
+
+  herRecognition.onresult = (event) => {
+    let text = "";
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      if (event.results[i].isFinal) {
+        text += event.results[i][0].transcript;
+      }
+    }
+    if (text.trim()) {
+      // 以 [HER] 前缀发到战情室聊天，Hermes 后续会去取
+      const herText = "[HER] " + text.trim();
+      fetch("/api/speak", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({role: "user", text: herText})
+      }).then(r => r.json()).then(d => {
+        if (d.ok) {
+          addSystemMsg("📋 " + text.trim());
+        } else {
+          // 如果user已发言，用hermes角色发
+          fetch("/api/speak", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({role: "hermes", text: herText})
+          }).then(r2 => r2.json()).then(d2 => {
+            if (d2.ok) addSystemMsg("📋 " + text.trim());
+            else alert("发送失败: " + (d2.error || "未知错误"));
+          });
+        }
+      }).catch(e => {
+        alert("请求失败: " + e.message);
+      });
+    }
+  };
+
+  herRecognition.onend = () => {
+    btnHer.textContent = "🔴 HER";
+    btnHer.style.borderColor = "rgba(255,68,68,0.25)";
+    herListening = false;
+  };
+
+  herRecognition.onerror = (event) => {
+    console.error("HER 语音识别错误:", event.error);
+    btnHer.textContent = "🔴 HER";
+    btnHer.style.borderColor = "rgba(255,68,68,0.25)";
+    herListening = false;
+    if (event.error !== "no-speech" && event.error !== "aborted") {
+      alert("语音识别失败: " + event.error);
+    }
+  };
+
+  herRecognition.start();
+  herListening = true;
+  btnHer.textContent = "🔴 聆听中...";
+  btnHer.style.borderColor = "#ff4444";
+};
+
+function addSystemMsg(text) {
+  const msgEl = document.createElement("div");
+  msgEl.className = "msg system";
+  msgEl.innerHTML = '<div class="bubble" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);color:rgba(255,255,255,0.5);font-size:12px;text-align:center;">' + escapeHtml(text) + '</div>';
+  msgsEl.appendChild(msgEl);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+}
+
+// ══════════════════════════════════════════
+// 下一轮
+// ══════════════════════════════════════════
+btnNext.onclick = async () => {
+  try {
+    await fetch("/api/next-round", {method: "POST"});
+  } catch (e) {
+    console.error("下一轮失败", e);
+  }
+};
+
+// ══════════════════════════════════════════
+// 清空聊天
+// ══════════════════════════════════════════
+document.getElementById("btnClear").onclick = async () => {
+  if (!confirm("确定要清空所有聊天消息吗？")) return;
+  try {
+    await fetch("/api/clear", {method: "POST"});
+    msgsEl.innerHTML = "";
+    roundBadge.textContent = "第 0 轮";
+  } catch (e) {
+    console.error("清空失败", e);
+  }
+};
+
+// ══════════════════════════════════════════
+// 退出登录
+// ══════════════════════════════════════════
+document.getElementById("btnLogout").onclick = async () => {
+  if (confirm("确定要退出登录吗？")) {
+    try {
+      await fetch("/api/logout", {method: "POST"});
+      location.href = "/";
+    } catch (e) {
+      location.href = "/";
+    }
+  }
+};
+
+// ══════════════════════════════════════════
+// TTS 播放 — 用 AudioContext 绕过浏览器自动播放限制
+// ══════════════════════════════════════════
+let _wrAudioCtx = null;
+let _wrAudioCtxReady = false;
+
+/** 在用户手势中初始化 AudioContext（首次点击/触摸时调用） */
+function _initWRAudioCtx() {
+  if (_wrAudioCtxReady) return;
+  if (!_wrAudioCtx || _wrAudioCtx.state === 'closed') {
+    _wrAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (_wrAudioCtx.state === 'suspended') {
+    _wrAudioCtx.resume().catch(() => {});
+  }
+  _wrAudioCtxReady = true;
+}
+
+// 页面任意首次点击时初始化 AudioContext（用户手势授权）
+document.addEventListener('pointerdown', _initWRAudioCtx, { once: true });
+document.addEventListener('click', _initWRAudioCtx, { once: true });
+
+/** 获取一个已授权的 AudioContext */
+async function _getWRAudioCtx() {
+  if (!_wrAudioCtxReady) _initWRAudioCtx();
+  let ctx = _wrAudioCtx;
+  if (!ctx || ctx.state === 'closed') {
+    _wrAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    ctx = _wrAudioCtx;
+  }
+  if (ctx.state === 'suspended') {
+    try { await ctx.resume(); } catch (e) {}
+  }
+  return ctx;
+}
+
+/** 用 AudioContext 播放 base64 音频 */
+async function playTTS(audioB64, role) {
+  try {
+    const binary = atob(audioB64);
+    const array = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i);
+    const blob = new Blob([array], {type: "audio/mp3"});
+    
+    const ctx = await _getWRAudioCtx();
+    const buf = await blob.arrayBuffer();
+    const audioBuf = await ctx.decodeAudioData(buf);
+    const source = ctx.createBufferSource();
+    source.buffer = audioBuf;
+    source.connect(ctx.destination);
+    source.start(0);
+  } catch (e) {
+    console.error("TTS播放错误:", e);
+  }
+}
+
+// ══════════════════════════════════════════
+// 工具函数
+// ══════════════════════════════════════════
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function renderText(text) {
+  // 检测代码块 ```...``` → 可折叠代码框
+  const parts = text.split(/(```[\s\S]*?```)/g);
+  return parts.map(p => {
+    if (p.startsWith("```") && p.endsWith("```")) {
+      // 提取语言和代码
+      const firstLine = p.indexOf('\n');
+      const lang = p.substring(3, firstLine).trim();
+      const code = p.substring(firstLine + 1, p.length - 3);
+      const hasCode = code.trim().length > 0;
+      const uid = "cb_" + Math.random().toString(36).substr(2, 6);
+      return `<div class="code-block">
+        <div class="code-header" onclick="toggleCode('${uid}')">
+          <span>${lang || 'code'}</span>
+          <span>
+            <span id="${uid}_label">${hasCode ? '展开' : ''}</span>
+            <button class="copy-btn" onclick="event.stopPropagation();copyCode('${uid}')">📋 复制</button>
+          </span>
+        </div>
+        <div class="code-body ${hasCode ? '' : 'collapsed'}" id="${uid}">
+          <pre>${escapeHtml(code)}</pre>
+        </div>
+      </div>`;
+    }
+    return `<span>${escapeHtml(p)}</span>`;
+  }).join('');
+}
+
+function toggleCode(id) {
+  const el = document.getElementById(id);
+  const label = document.getElementById(id + '_label');
+  if (!el) return;
+  el.classList.toggle('collapsed');
+  if (label) label.textContent = el.classList.contains('collapsed') ? '展开' : '折叠';
+}
+
+function copyCode(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const code = el.querySelector('pre');
+  if (!code) return;
+  navigator.clipboard.writeText(code.textContent).then(() => {
+    const btn = el.parentElement.querySelector('.copy-btn');
+    if (btn) { btn.textContent = '✅ 已复制'; setTimeout(() => { btn.textContent = '📋 复制'; }, 2000); }
+  });
+}
+
+// ══════════════════════════════════════════
+// 启动
+// ══════════════════════════════════════════
+updateRoleBtn();
+connectWS();
+
+// 定期 ping 保活
+setInterval(() => {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({action: "ping"}));
+  }
+}, 30000);
+</script>
+</body>
+</html>

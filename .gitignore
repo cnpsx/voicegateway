@@ -1,7 +1,19 @@
-voice_gateway/
-├── README.md
-├── voice_server.py           # 后端主服务
-├── voice.html                # Web版语音页面
-├── voice_client.py           # Python桌面客户端
-├── network.html              # 网络管理页面
-└── network_config.example.json  # 网络配置示例
+# Voice Gateway gitignore
+*.pyc
+__pycache__/
+*.log
+*.tar.gz
+certs/
+voice_history/
+voice_export/
+voice_export.tar.gz
+voice_replace_events.txt
+
+# VS / C#
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.pdb
+packages/
