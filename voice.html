@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>语音通话 | Hermes</title>
-<script src="https://cdn.jsdelivr.net/npm/@ricky0123/vad@0.1.4/dist/index.min.js"></script>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -107,42 +106,89 @@ body {
 .mode-btn:first-child { border-radius: 7px 0 0 7px; }
 .mode-btn:last-child { border-radius: 0 7px 7px 0; }
 
-/* 按住说话按钮 */
+/* ── 圆圈流水线 ── */
+.pipeline {
+  display: flex; align-items: center; gap: 6px;
+  margin-left: auto;
+}
+.ring-wrap {
+  position: relative; display: inline-flex;
+  width: 34px; height: 34px; align-items: center; justify-content: center;
+  cursor: pointer;
+}
+.ring-svg { position: absolute; top:0; left:0; width:100%; height:100%; transform: rotate(-90deg); }
+.ring-bg { fill:none; stroke:rgba(255,255,255,0.06); stroke-width:3; }
+.ring-fg { fill:none; stroke-width:3; stroke-linecap:round; transition: stroke-dashoffset 0.3s; }
+.ring-outer.clockwise .ring-fg { stroke:#7C5CFC; }
+.ring-outer.counter-clockwise .ring-fg { stroke:#FFB74D; }
+.ring-outer.idle .ring-fg { stroke:rgba(255,255,255,0.12); }
+.ring-outer.done .ring-fg { stroke:#4CAF50; opacity:0; transition: opacity 0.5s; }
+.ring-error {
+  position: absolute; top:0; left:0; width:100%; height:100%;
+  border-radius:50%; background:rgba(244,67,54,0.15);
+  display:none; align-items:center; justify-content:center;
+  font-size:9px; color:#f44336; font-weight:700;
+  border:2px solid rgba(244,67,54,0.3);
+}
+.ring-error.show { display:flex; }
+.ring-inner {
+  width:22px; height:22px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-size:9px; font-weight:600; color:rgba(255,255,255,0.6);
+  transition: all 0.3s;
+  position: relative; z-index: 1;
+}
+.ring-inner.green  { background: rgba(76,175,80,0.2);  color: #81C784; }
+.ring-inner.yellow { background: rgba(255,183,77,0.2); color: #FFB74D; }
+.ring-inner.red    { background: rgba(244,67,54,0.2);  color: #f44336; }
+.ring-inner.gray   { background: rgba(255,255,255,0.03); color: rgba(255,255,255,0.2); }
+.ring-label {
+  position:absolute; bottom:-14px; left:50%; transform:translateX(-50%);
+  font-size:8px; color:rgba(255,255,255,0.2); white-space:nowrap;
+}
 .record-btn-wrap {
-  position: relative;
-  display: inline-block;
+  position: relative; display: inline-block; margin:0 4px;
 }
 .record-btn {
-  width: 56px; height: 56px;
+  width: 48px; height: 48px;
   border-radius: 50%;
   border: 2px solid rgba(255,255,255,0.15);
   background: rgba(255,255,255,0.05);
   color: #e0e0e0;
-  font-size: 24px;
+  font-size: 20px;
   cursor: pointer;
   transition: all .2s;
   display: flex; align-items: center; justify-content: center;
+  position:relative; z-index:1;
 }
 .record-btn:active { transform: scale(0.92); }
 .record-btn.recording {
   background: rgba(244,67,54,0.2);
   border-color: #f44336;
   color: #f44336;
-  animation: btnPulse .8s infinite;
 }
-@keyframes btnPulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(244,67,54,0.4); }
-  50% { box-shadow: 0 0 0 12px rgba(244,67,54,0); }
+.record-btn:disabled { opacity:0.4; cursor:not-allowed; }
+/* 麦克风外圈倒计时（conic-gradient 实现） */
+.mic-ring {
+  position:absolute; top:-4px; left:-4px; width:56px; height:56px; border-radius:50%;
+  background: conic-gradient(#7C5CFC var(--pct,0%), transparent var(--pct,0%));
+  mask: radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 3px));
+  -webkit-mask: radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 3px));
+  transition: background 0.3s;
+  pointer-events:none;
 }
-.record-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+.mic-ring.idle { display:none; }
+.pipe-arrow { color:rgba(255,255,255,0.12); font-size:10px; user-select:none; }
+/* 打字发送按钮放控制栏 */
+.send-inline { display:flex; align-items:center; gap:4px; }
+.send-inline input {
+  width:120px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08);
+  border-radius:6px; padding:4px 8px; color:#e0e0e0; font-size:11px; outline:none;
 }
-
-.ctrl-label {
-  font-size: 12px;
-  color: rgba(255,255,255,0.4);
-}
+.send-inline input:focus { border-color:rgba(124,92,252,0.4); }
+.send-inline .btn-send-s { padding:4px 10px; font-size:11px; border:none; border-radius:6px; background:#7C5CFC; color:#fff; cursor:pointer; }
+.send-inline .btn-send-s.btn-clear { background:transparent; color:rgba(255,255,255,0.4); }
+.send-inline .btn-send-s.btn-clear:hover { color:#f44336; }
 
 /* ── 消息区 ── */
 .msgs {
@@ -288,21 +334,55 @@ body {
   <!-- 控制区 -->
   <div class="control-bar">
     <div class="mode-toggle">
-      <button class="mode-btn" id="modeHold" title="按住说话，松开发送">按住说话</button>
-      <button class="mode-btn active" id="modeAuto" title="点击开始，自动检测静音停止">持续监听</button>
+      <button class="mode-btn active" id="modeHold" title="按住说话，松开发送">按住</button>
+      <button class="mode-btn" id="modeAuto" title="点击开始，自动检测静音停止">监听</button>
     </div>
 
     <div class="record-btn-wrap">
       <button class="record-btn" id="btnRecord" title="按住录音">🎤</button>
+      <div class="mic-ring" id="micRing"></div>
     </div>
 
-    <span class="ctrl-label" id="ctrlHint">按住按钮说话，松开发送</span>
+    <span class="ctrl-label" id="ctrlHint" style="font-size:11px;color:rgba(255,255,255,0.35);">按住说话</span>
 
-    <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
-      <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:rgba(255,255,255,0.3);cursor:pointer;">
-        <input type="checkbox" id="chkVoiceFilter" disabled>
-        🎛️ 声纹过滤
-      </label>
+    <!-- 流水线 -->
+    <div class="pipeline" id="pipeline">
+      <span class="pipe-arrow" style="margin-right:2px;">▶</span>
+
+      <!-- A3B -->
+      <div class="ring-wrap" title="A3B ASR 语音识别">
+        <svg class="ring-svg" viewBox="0 0 34 34"><circle class="ring-bg" cx="17" cy="17" r="14.5"/><circle class="ring-fg" id="ringA3B" cx="17" cy="17" r="14.5" stroke-dasharray="91" stroke-dashoffset="0"/></svg>
+        <div class="ring-inner gray" id="innerA3B">⚡</div>
+        <div class="ring-error" id="errA3B">✕</div>
+        <div class="ring-label">ASR</div>
+      </div>
+
+      <span class="pipe-arrow">▶</span>
+
+      <!-- Hermes -->
+      <div class="ring-wrap" title="Hermes 思考回答">
+        <svg class="ring-svg" viewBox="0 0 34 34"><circle class="ring-bg" cx="17" cy="17" r="14.5"/><circle class="ring-fg" id="ringHermes" cx="17" cy="17" r="14.5" stroke-dasharray="91" stroke-dashoffset="0"/></svg>
+        <div class="ring-inner gray" id="innerHermes">🤖</div>
+        <div class="ring-error" id="errHermes">✕</div>
+        <div class="ring-label">Hermes</div>
+      </div>
+
+      <span class="pipe-arrow">▶</span>
+
+      <!-- TTS -->
+      <div class="ring-wrap" title="文字转语音播放">
+        <svg class="ring-svg" viewBox="0 0 34 34"><circle class="ring-bg" cx="17" cy="17" r="14.5"/><circle class="ring-fg" id="ringTTS" cx="17" cy="17" r="14.5" stroke-dasharray="91" stroke-dashoffset="0"/></svg>
+        <div class="ring-inner gray" id="innerTTS">🔊</div>
+        <div class="ring-error" id="errTTS">✕</div>
+        <div class="ring-label">TTS</div>
+      </div>
+    </div>
+
+    <!-- 行内打字 -->
+    <div class="send-inline">
+      <input type="text" id="inputText" placeholder="打字..." maxlength="2000">
+      <button class="btn-send-s" id="btnSend" disabled>发送</button>
+      <button class="btn-send-s btn-clear" id="btnClear" title="清空对话">🗑️</button>
     </div>
   </div>
 
@@ -314,23 +394,125 @@ body {
       </div>
     </div>
   </div>
-
-  <!-- 输入区 -->
-  <div class="input-area">
-    <div class="input-row">
-      <input type="text" id="inputText" placeholder="打字输入（或按住🎤按钮说话）" maxlength="2000">
-      <button class="btn btn-send" id="btnSend" disabled>发送</button>
-      <button class="btn btn-clear" id="btnClear">🗑️</button>
-    </div>
-  </div>
 </div>
 
 <script>
 // ══════════════════════════════════════════
+// TimerRing：SVG 倒计时外圈
+// ══════════════════════════════════════════
+class TimerRing {
+  constructor(svgId, innerId, errId, totalSec, serviceName) {
+    this.svg = document.getElementById(svgId);
+    this.inner = document.getElementById(innerId);
+    this.err = document.getElementById(errId);
+    this.totalSec = totalSec;
+    this.circumference = 91; // 2*π*14.5 ≈ 91
+    this.remaining = 0;
+    this._timer = null;
+    this._parent = this.svg?.parentElement;
+    this.serviceName = serviceName || '';
+    this.diagCallback = null; // 诊断回调函数
+    // 点击红叉圆圈触发诊断
+    if (this._parent && this.serviceName) {
+      this._parent.addEventListener('click', () => this._onClick());
+    }
+  }
+  /** 点击处理 */
+  async _onClick() {
+    // 只有红叉状态才触发诊断
+    const isRedCross = this.err.classList.contains('show') && this.err.textContent === '✕';
+    if (!isRedCross) return;
+    // 防止重复诊断
+    if (this._diaging) return;
+    this._diaging = true;
+    this.err.textContent = '⟳';
+    try {
+      const resp = await fetch('/api/diag/check?service=' + encodeURIComponent(this.serviceName));
+      const result = await resp.json();
+      // 显示诊断结果
+      const alive = result.alive;
+      this.err.textContent = alive ? '✓' : '✕';
+      this.err.style.color = alive ? '#4CAF50' : '#f44336';
+      // 如果活过来了更新颜色
+      if (alive) this.setColor('green');
+      // 回调累计诊断结果
+      if (this.diagCallback) this.diagCallback(this.serviceName, result);
+    } catch(e) {
+      this.err.textContent = '!';
+    }
+    this._diaging = false;
+  }
+  /** 开始倒计时（秒数），方向 clockwise / counter-clockwise */
+  start(sec, dir = 'clockwise') {
+    this.stop();
+    this.remaining = sec || this.totalSec;
+    const p = this._parent;
+    if (p) {
+      // 移除 idle/done 状态
+      if (p.classList.contains('ring-outer')) { p.classList.remove('idle','done'); }
+      else { p.classList.add('ring-outer'); }
+      p.classList.remove('counter-clockwise','clockwise');
+      p.classList.add(dir);
+    }
+    this.inner.className = 'ring-inner'; // 重置颜色
+    this.err.classList.remove('show');
+    this.err.textContent = '';
+    this._update();
+    this._timer = setInterval(() => {
+      this.remaining = Math.max(0, this.remaining - 0.1);
+      this._update();
+      if (this.remaining <= 0) this.stop(true);
+    }, 100);
+  }
+  /** 标记完成（外圈消失） */
+  done() {
+    this.stop();
+    this.remaining = 0;
+    const p = this._parent;
+    if (p) { p.classList.add('done'); p.classList.remove('counter-clockwise','clockwise','idle'); }
+    this.inner.className = 'ring-inner gray';
+    this.err.classList.remove('show');
+  }
+  /** 标记空闲 */
+  idle() {
+    this.stop();
+    this.remaining = 0;
+    const p = this._parent;
+    if (p) { p.classList.add('idle'); p.classList.remove('counter-clockwise','clockwise','done'); }
+    this.inner.className = 'ring-inner gray';
+    this.err.classList.remove('show');
+  }
+  /** 标记连接失败（红色叉覆盖） */
+  error(force) {
+  /** 标记连接失败（红色叉覆盖） */
+  error() {
+    this.stop();
+    this.remaining = 0;
+    const p = this._parent;
+    if (p) { p.classList.remove('counter-clockwise','clockwise','done','idle'); }
+    this.inner.className = 'ring-inner gray';
+    this.err.textContent = '✕';
+    this.err.style.color = '#f44336';
+    this.err.classList.add('show');
+  }
+  setColor(color) { this.inner.className = 'ring-inner ' + color; }
+  stop(keepRemaining) {
+    if (this._timer) { clearInterval(this._timer); this._timer = null; }
+    if (!keepRemaining) this.remaining = 0;
+    if (this.svg) this.svg.setAttribute('stroke-dashoffset', this.circumference);
+  }
+  _update() {
+    const pct = this.remaining / this.totalSec;
+    const offset = this.circumference * (1 - pct);
+    this.svg?.setAttribute('stroke-dashoffset', Math.max(0, Math.min(this.circumference, offset)));
+  }
+}
+
+// ══════════════════════════════════════════
 // 状态
 // ══════════════════════════════════════════
 const STATE = { IDLE: "idle", RECORDING: "recording", PROCESSING: "processing" };
-let mode = "hold";   // "hold" | "auto"
+let mode = "hold";   // "auto" | "hold"（默认按住说话，ScriptProcessorNode 在 Edge 已废弃）
 let state = STATE.IDLE;
 let mediaRecorder = null;
 let audioChunks = [];
@@ -342,11 +524,112 @@ let recordingTimeout = null;
 const msgsEl = document.getElementById("msgs");
 const btnRecord = document.getElementById("btnRecord");
 const btnSend = document.getElementById("btnSend");
-const btnClear = document.getElementById("btnClear");
 const inputText = document.getElementById("inputText");
 const statusDot = document.getElementById("statusDot");
 const statusLabel = document.getElementById("statusLabel");
 const ctrlHint = document.getElementById("ctrlHint");
+const btnClear = document.getElementById("btnClear");
+
+// ══════════════════════════════════════════
+// 流水线圈初始化
+// ══════════════════════════════════════════
+const ringA3B   = new TimerRing('ringA3B',   'innerA3B',   'errA3B',   30, 'asr');
+const ringHermes= new TimerRing('ringHermes','innerHermes','errHermes',30, 'hermes');
+const ringTTS   = new TimerRing('ringTTS',   'innerTTS',   'errTTS',   30, 'tts');
+let diagResults = []; // 诊断结果累计
+
+// 诊断回调：累计结果，满3个或首次诊断后汇总
+function onDiagResult(svc, result) {
+  diagResults.push({ service: svc, time: new Date().toLocaleString(), result });
+  // 首次诊断后，显示汇总提示
+  const status = result.alive ? '✅ 正常' : '❌ 异常';
+  addSystemMsg(`🔍 [诊断] ${svc.toUpperCase()}: ${status} (${result.host}:${result.port})`);
+  // 诊断完所有红叉服务后，汇总发给 Hermes
+  const errorSvcs = diagResults.filter(r => !r.result.alive);
+  if (errorSvcs.length > 0 && errorSvcs.length === ['asr','hermes','tts'].filter(
+    s => document.getElementById('err' + s.charAt(0).toUpperCase() + s.slice(1))?.classList.contains('show')
+  ).length) {
+    sendDiagSummary();
+  }
+}
+
+async function sendDiagSummary() {
+  const errList = diagResults.filter(r => !r.result.alive).map(r =>
+    `- ${r.service.toUpperCase()} (${r.result.host}:${r.result.port}): ${r.result.error || '连接失败'}`
+  ).join('\n');
+  if (!errList) return;
+  const text = `[诊断报告] 发现以下服务异常:\n${errList}\n\n请排查。`;
+  addSystemMsg('📋 ' + text);
+}
+
+// 绑定诊断回调
+ringA3B.diagCallback = onDiagResult;
+ringHermes.diagCallback = onDiagResult;
+ringTTS.diagCallback = onDiagResult;
+const micRingEl = document.getElementById('micRing');
+let micRingTimer = null;
+const MIC_MAX_SEC = 90;
+
+function micRingStart() {
+  micRingEl.classList.remove('idle');
+  let sec = MIC_MAX_SEC;
+  micRingEl.style.setProperty('--pct', '0%');
+  micRingTimer = setInterval(() => {
+    sec = Math.max(0, sec - 0.1);
+    micRingEl.style.setProperty('--pct', ((1 - sec/MIC_MAX_SEC)*100) + '%');
+  }, 100);
+}
+function micRingStop() {
+  if (micRingTimer) { clearInterval(micRingTimer); micRingTimer = null; }
+  micRingEl.classList.add('idle');
+  micRingEl.style.setProperty('--pct', '0%');
+}
+
+// ══════════════════════════════════════════
+// 网络质量检测 → 流水线圈颜色
+// ══════════════════════════════════════════
+const RING_LAT = { green: 35, yellow: 350, red: 6000 };
+
+function latToColor(lat) {
+  if (lat < 0) return 'gray';
+  if (lat <= RING_LAT.green) return 'green';
+  if (lat <= RING_LAT.yellow) return 'yellow';
+  return 'red';
+}
+
+async function checkPipelineNetwork() {
+  try {
+    const resp = await fetch("/api/network/preview");
+    const data = await resp.json();
+    // 找到各服务的延迟（适配不同的预览路径命名）
+    const findLat = (label) => {
+      const p = data.previews?.find(x => x.to === label || x.to?.includes?.(label));
+      return p ? p.latency : -1;
+    };
+    const asrLat = findLat('asr');
+    const ttsLat = findLat('tts');
+    const chatLat = findLat('chat');
+
+    ringA3B.setColor(latToColor(asrLat));
+    ringTTS.setColor(latToColor(ttsLat));
+    // Hermes 用 chat 延迟
+    ringHermes.setColor(latToColor(chatLat));
+
+    // 如果连接不通，显示红色叉
+    if (asrLat < 0) ringA3B.error(); else ringA3B.idle();
+    if (chatLat < 0) ringHermes.error(); else ringHermes.idle();
+    if (ttsLat < 0) ringTTS.error(); else ringTTS.idle();
+
+  } catch(e) {
+    ringA3B.error();
+    ringHermes.error();
+    ringTTS.error();
+  }
+}
+
+// 初始检测 + 每15秒刷新
+checkPipelineNetwork();
+setInterval(checkPipelineNetwork, 15000);
 
 // ══════════════════════════════════════════
 // 状态管理
@@ -447,42 +730,84 @@ function writeString(view, offset, str) {
   for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
 }
 
-/** WebRTC VAD 模式：持续监听，自动检测语音起止 */
+/** 纯浏览器 VAD：ScriptProcessorNode + RMS 能量检测，零外部依赖 */
 async function startAutoVAD() {
   if (state === STATE.PROCESSING) return;
-  if (vadInstance) { try { vadInstance.destroy(); } catch(e) {} vadInstance = null; }
+  forceCleanup();
 
   try {
-    const myvad = await vad.MicVAD.new({
-      positiveSpeechThreshold: 0.5,
-      negativeSpeechThreshold: 0.35,
-      redemptionFrames: 10,
-      preSpeechPadFrames: 5,
-      frameSamples: 480,
-      stream: await navigator.mediaDevices.getUserMedia({
-        audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: true, sampleRate: 16000 }
-      }),
-      onSpeechStart: () => {
-        setStatus(STATE.RECORDING);
-        ctrlHint.textContent = "正在听...";
-        addSystemMsg("🎤 开始录音...");
-      },
-      onSpeechEnd: (audio) => {
-        // audio: Float32Array, 16kHz mono
-        ctrlHint.textContent = "正在识别语音...";
-        addSystemMsg("🔍 语音结束，正在识别...");
-        vadInstance = myvad;  // 保存引用
-        setStatus(STATE.PROCESSING);
-        // 转 wav 并发送
-        const wavBlob = float32ToWav(audio, 16000);
-        audioChunks = [wavBlob];  // 替换 audioChunks
-        processAudio();
-      }
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: true }
     });
 
-    myvad.start();
-    vadInstance = myvad;
-    stream = myvad.stream;  // 保存引用，方便清理
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    window.audioCtx = audioCtx; // 给 TTS 复用
+    const source = audioCtx.createMediaStreamSource(stream);
+
+    // ScriptProcessorNode: 每帧分析 RMS 能量
+    const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+
+    let speechFrames = 0;
+    let silenceFrames = 0;
+    const SPEECH_THRESHOLD = 0.015;      // RMS 语音阈值
+    const SILENCE_FRAMES_MAX = 20;       // 连续静音帧数（约 20*4096/16000 ≈ 5 秒静音判定结束）
+    const SPEECH_FRAMES_MIN = 2;         // 最少语音帧数才视为有效说话
+    let isSpeaking = false;
+    let audioBuffer = [];
+    let recordingTimeoutId = null;
+
+    processor.onaudioprocess = (e) => {
+      const input = e.inputBuffer.getChannelData(0);
+      // 计算 RMS
+      let sum = 0;
+      for (let i = 0; i < input.length; i++) {
+        sum += input[i] * input[i];
+      }
+      const rms = Math.sqrt(sum / input.length);
+      const isSpeech = rms > SPEECH_THRESHOLD;
+
+      if (isSpeech) {
+        speechFrames++;
+        silenceFrames = 0;
+        audioBuffer.push(new Float32Array(input));
+
+        if (!isSpeaking && speechFrames >= SPEECH_FRAMES_MIN) {
+          isSpeaking = true;
+          setStatus(STATE.RECORDING);
+          ctrlHint.textContent = "🎤 正在听...";
+          addSystemMsg("🎤 开始录音...");
+        }
+      } else {
+        silenceFrames++;
+        if (isSpeaking) {
+          audioBuffer.push(new Float32Array(input)); // 保留静音尾音
+          if (silenceFrames >= SILENCE_FRAMES_MAX) {
+            // 说话结束
+            isSpeaking = false;
+            setStatus(STATE.PROCESSING);
+            ctrlHint.textContent = "正在识别语音...";
+            addSystemMsg("🔍 语音结束，正在识别...");
+
+            // 合并音频缓冲区
+            const totalLen = audioBuffer.reduce((sum, arr) => sum + arr.length, 0);
+            const merged = new Float32Array(totalLen);
+            let offset = 0;
+            for (const arr of audioBuffer) {
+              merged.set(arr, offset);
+              offset += arr.length;
+            }
+            audioBuffer = [];
+
+            const wavBlob = float32ToWav(merged, audioCtx.sampleRate);
+            audioChunks = [wavBlob];
+            processAudio();
+          }
+        }
+      }
+    };
+
+    processor.connect(audioCtx.destination);
+    vadInstance = { processor, source, audioCtx };
     setStatus(STATE.RECORDING);
     ctrlHint.textContent = "🎤 持续监听中...";
   } catch (e) {
@@ -495,10 +820,15 @@ async function startAutoVAD() {
 
 function stopAutoVAD() {
   if (vadInstance) {
-    try { vadInstance.destroy(); } catch(e) {}
+    try {
+      vadInstance.processor.disconnect();
+      vadInstance.source.disconnect();
+    } catch(e) {}
+    try { vadInstance.audioCtx.close(); } catch(e) {}
     vadInstance = null;
   }
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  stream = null;
   setStatus(STATE.IDLE);
 }
 
@@ -519,6 +849,7 @@ async function startMediaRecorder() {
     };
 
     mediaRecorder.onstop = async () => {
+      micRingStop(); // ← 停止麦克风倒计时
       if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
       if (recordingTimeout) { clearTimeout(recordingTimeout); recordingTimeout = null; }
 
@@ -529,6 +860,7 @@ async function startMediaRecorder() {
     };
 
     mediaRecorder.start(250);
+    micRingStart(); // ← 开始麦克风倒计时
     setStatus(STATE.RECORDING);
 
     recordingTimeout = setTimeout(() => {
@@ -598,10 +930,12 @@ async function processAudio() {
     const blob = isWav ? first : new Blob(audioChunks, { type: "audio/webm" });
 
     // 1. ASR
+    ringA3B.start(30, 'counter-clockwise'); // 逆时针30秒倒计时
     const asrResp = await fetch("/api/asr", { method: "POST", body: blob });
     const asrResult = await asrResp.json();
 
     if (asrResult.error) {
+      ringA3B.done();
       addSystemMsg("⚠️ ASR 识别失败: " + asrResult.error);
       setStatus(STATE.IDLE);
       ctrlHint.textContent = "按住按钮说话，松开发送";
@@ -610,11 +944,13 @@ async function processAudio() {
 
     const userText = asrResult.text;
     if (!userText) {
+      ringA3B.done();
       addSystemMsg("⚠️ 未识别到语音");
       setStatus(STATE.IDLE);
       ctrlHint.textContent = "按住按钮说话，松开发送";
       return;
     }
+    ringA3B.done(); // ASR 完成
 
     // 显示用户消息
     addMsg("user", userText);
@@ -628,6 +964,7 @@ async function processAudio() {
 
     // 3. LLM 对话
     ctrlHint.textContent = "Hermes 正在思考...";
+    ringHermes.start(30, 'counter-clockwise'); // Hermes 30秒逆时针倒计时
     const chatResp = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -636,6 +973,7 @@ async function processAudio() {
     const chatResult = await chatResp.json();
 
     if (chatResult.error) {
+      ringHermes.done();
       addSystemMsg("⚠️ LLM 回复失败: " + chatResult.error);
       // 回退：调用 DeepSeek 直接发
       setStatus(STATE.IDLE);
@@ -644,6 +982,7 @@ async function processAudio() {
     }
 
     const reply = chatResult.text;
+    ringHermes.done(); // Hermes 完成
     addMsg("assistant", reply);
 
     // 4. 同步到历史记录（只存档到文件，不自动存记忆）
@@ -655,7 +994,9 @@ async function processAudio() {
 
     // 5. TTS 播放
     ctrlHint.textContent = "正在播放语音...";
+    ringTTS.start(30, 'counter-clockwise'); // TTS 30秒逆时针倒计时
     await playTTS(reply);
+    ringTTS.done(); // TTS 完成
 
     ctrlHint.textContent = "按住按钮说话，松开发送";
 
@@ -777,9 +1118,16 @@ btnRecord.addEventListener("click", (e) => {
   }
 });
 
-// 全局 mouseup 兜底（按住说话模式松手停）
+// 全局 mouseup 兜底（按住说话模式松手停，只在按钮mousedown后生效）
+let _holdActive = false;
+document.addEventListener("mousedown", (e) => {
+  if (mode === "hold" && e.target === btnRecord) {
+    _holdActive = true;
+  }
+});
 document.addEventListener("mouseup", () => {
-  if (mode === "hold" && state === STATE.RECORDING) {
+  if (mode === "hold" && _holdActive && state === STATE.RECORDING) {
+    _holdActive = false;
     stopRecording();
   }
 });
@@ -841,6 +1189,7 @@ async function sendText() {
       body: JSON.stringify({ role: "user", content: text }),
     });
 
+    ringHermes.start(30, 'counter-clockwise');
     const chatResp = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -849,9 +1198,11 @@ async function sendText() {
     const chatResult = await chatResp.json();
 
     if (chatResult.error) {
+      ringHermes.done();
       addSystemMsg("⚠️ " + chatResult.error);
     } else {
       const reply = chatResult.text;
+      ringHermes.done();
       addMsg("assistant", reply);
 
       await fetch("/api/sync_chat", {
@@ -861,9 +1212,12 @@ async function sendText() {
       });
 
       ctrlHint.textContent = "正在播放语音...";
+      ringTTS.start(30, 'counter-clockwise');
       await playTTS(reply);
+      ringTTS.done();
     }
   } catch (e) {
+    ringHermes.done();
     addSystemMsg("⚠️ " + e.message);
   }
 
@@ -875,6 +1229,7 @@ async function sendText() {
 // ══════════════════════════════════════════
 // 清空
 // ══════════════════════════════════════════
+if (btnClear) {
 btnClear.onclick = async () => {
   if (!confirm("清空当前对话？")) return;
   try {
@@ -890,6 +1245,7 @@ btnClear.onclick = async () => {
     console.error("清空失败", e);
   }
 };
+}
 
 // ══════════════════════════════════════════
 // 网络质量检测（本机 → TTS 服务器）
@@ -916,9 +1272,7 @@ async function checkNetworkQuality() {
   }
 }
 
-// 启动：网络质量检测每15秒刷新
-checkNetworkQuality();
-setInterval(checkNetworkQuality, 15000);
+// 启动：网络质量检测每15秒刷新（已由 checkPipelineNetwork 处理）
 
 // 诊断浏览器支持
 console.log("MediaDevices:", !!navigator.mediaDevices);

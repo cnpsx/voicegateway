@@ -562,6 +562,8 @@ async def api_network_preview(request):
     # 各设备的实际 IP 地址
     DEVICE_ADDRS = {
         "bt2": {"ipv4": "192.168.1.21", "ipv6": "2408:8256:3500:1f3:a66e:47a9:2ac0:e5dc", "tailscale": "100.80.121.48"},
+        "asr": {"ipv4": "192.168.1.21", "ipv6": "2408:8256:3500:1f3:a66e:47a9:2ac0:e5dc", "tailscale": "100.80.121.48"},
+        "chat": {"ipv4": "127.0.0.1", "ipv6": "::1", "tailscale": ""},
         "a3b": {"ipv4": "192.168.1.21", "ipv6": "2408:8256:3500:1f3:a66e:47a9:2ac0:e5dc", "tailscale": "100.80.121.48"},
         "tts": {"ipv4": "192.168.1.5", "ipv6": "", "tailscale": "100.73.220.74"},
         "company-pc": {"ipv4": "192.168.1.5", "ipv6": "2408:8256:3500:1f3:a66e:47a9:2ac0:e5dc", "tailscale": "100.73.220.74"},
@@ -627,6 +629,64 @@ async def api_network_preview(request):
             })
 
     return web.json_response({"previews": previews})
+
+
+# ══════════════════════════════════════════
+# 诊断 API — 检测各服务端口是否可通
+# ══════════════════════════════════════════
+SERVICE_PORTS = {
+    "asr": {"host": "127.0.0.1", "port": 12026, "name": "ASR (A3B llama.cpp)", "desc": "语音识别服务"},
+    "hermes": {"host": "127.0.0.1", "port": 8642, "name": "Hermes Gateway", "desc": "LLM 对话服务"},
+    "tts": {"host": "192.168.1.5", "port": 1234, "name": "TTS (Qwen/Edge)", "desc": "语音合成服务"},
+}
+
+
+async def api_diag_check(request):
+    """诊断：探测指定服务的端口是否可通"""
+    svc = request.query.get("service", "")
+    svc_cfg = SERVICE_PORTS.get(svc)
+    if not svc_cfg:
+        return web.json_response({"error": f"未知服务: {svc}"}, status=400)
+    try:
+        _, writer = await asyncio.wait_for(
+            asyncio.open_connection(svc_cfg["host"], svc_cfg["port"]),
+            timeout=3
+        )
+        writer.close()
+        await writer.wait_closed()
+        return web.json_response({
+            "service": svc,
+            "alive": True,
+            "host": svc_cfg["host"],
+            "port": svc_cfg["port"],
+        })
+    except (OSError, asyncio.TimeoutError) as e:
+        return web.json_response({
+            "service": svc,
+            "alive": False,
+            "host": svc_cfg["host"],
+            "port": svc_cfg["port"],
+            "error": str(e),
+        })
+
+
+async def api_diag_summary(request):
+    """诊断：一次性检测所有服务，返回结果"""
+    results = {}
+    for key, cfg in SERVICE_PORTS.items():
+        try:
+            _, writer = await asyncio.wait_for(
+                asyncio.open_connection(cfg["host"], cfg["port"]),
+                timeout=3
+            )
+            writer.close()
+            await writer.wait_closed()
+            results[key] = {"alive": True, "host": cfg["host"], "port": cfg["port"]}
+        except (OSError, asyncio.TimeoutError) as e:
+            results[key] = {"alive": False, "host": cfg["host"], "port": cfg["port"], "error": str(e)}
+    return web.json_response({"services": results})
+
+
 # 页面路由
 # ══════════════════════════════════════════
 VOICE_HTML = None
@@ -734,6 +794,9 @@ def main():
     app.router.add_post("/api/network/config", api_network_config_save)
     app.router.add_get("/api/network/defaults", api_network_defaults)
     app.router.add_get("/api/network/preview", api_network_preview)
+    # 诊断 API
+    app.router.add_get("/api/diag/check", api_diag_check)
+    app.router.add_get("/api/diag/summary", api_diag_summary)
 
     # HTTP
     runner = web.AppRunner(app)
