@@ -2,1337 +2,565 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>语音通话 | Hermes</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Hermes 通话</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", sans-serif;
-  background: #0a0a0f;
+  background: #111118;
   color: #e0e0e0;
   height: 100vh;
   overflow: hidden;
 }
 
-.app { display: flex; flex-direction: column; height: 100vh; }
+/* ── 登录页 ── */
+.login-page {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  height: 100vh;
+  padding: 24px;
+}
+.login-page h1 { font-size: 28px; font-weight: 700; margin-bottom: 4px; }
+.login-page p { color: rgba(255,255,255,0.35); font-size: 13px; margin-bottom: 24px; }
+.login-box {
+  width: 100%;
+  max-width: 320px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.login-box input {
+  width: 100%;
+  background: #1e1e2a;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 14px 16px;
+  color: #e0e0e0;
+  font-size: 15px;
+  outline: none;
+  transition: border .2s;
+}
+.login-box input:focus { border-color: rgba(91,78,240,0.4); }
+.login-box input::placeholder { color: rgba(255,255,255,0.2); }
+.login-btn {
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 12px;
+  background: #5B4EF0;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .2s;
+}
+.login-btn:hover { background: #4a3de0; }
+.login-btn:active { transform: scale(0.98); }
+.login-error {
+  color: #f44336;
+  font-size: 13px;
+  text-align: center;
+  min-height: 20px;
+}
 
-/* ── 顶部导航 ── */
+/* ── 微信风格布局（登录后） ── */
+.app {
+  display: none;
+  flex-direction: column;
+  height: 100vh;
+  max-width: 480px;
+  margin: 0 auto;
+  border-left: 1px solid rgba(255,255,255,0.04);
+  border-right: 1px solid rgba(255,255,255,0.04);
+}
+.app.show { display: flex; }
+
+@media (max-width: 480px) {
+  .app { max-width: 100%; border: none; }
+  .topbar { padding: 8px 10px; }
+  .topbar h1 { font-size: 15px; }
+  .msgs { padding: 8px 10px; }
+  .msg .bubble { font-size: 14px; padding: 8px 12px; border-radius: 16px; }
+  .input-bar { padding: 5px 8px 7px; }
+  .record-btn { width: 32px; height: 32px; font-size: 14px; }
+  .input-bar input { font-size: 13px; padding: 7px 12px; }
+  .send-btn { width: 32px; height: 32px; font-size: 14px; }
+  .login-page h1 { font-size: 24px; }
+  .login-box input { padding: 12px 14px; font-size: 14px; }
+  .login-btn { padding: 12px; font-size: 14px; }
+}
+
 .topbar {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 16px;
-  background: rgba(255,255,255,0.03);
+  display: flex; align-items: center;
+  padding: 10px 14px;
+  background: #1a1a24;
   border-bottom: 1px solid rgba(255,255,255,0.06);
   flex-shrink: 0;
+  gap: 8px;
 }
-.topbar h1 { font-size: 16px; font-weight: 600; }
-.tabs { display: flex; gap: 0; }
-.tab {
-  padding: 6px 16px;
-  font-size: 13px;
-  color: rgba(255,255,255,0.5);
-  cursor: pointer;
-  border-radius: 8px 8px 0 0;
-  transition: all .2s;
-  text-decoration: none;
-}
-.tab:hover { color: rgba(255,255,255,0.8); background: rgba(255,255,255,0.03); }
-.tab.active { color: #7C5CFC; background: rgba(124,92,252,0.1); font-weight: 600; }
-.topbar-right { display: flex; gap: 8px; align-items: center; }
+.topbar h1 { font-size: 16px; font-weight: 600; flex: 1; }
+.topbar-right { display: flex; align-items: center; gap: 6px; }
+.net-indicator { display: flex; align-items: center; gap: 3px; font-size: 10px; color: rgba(255,255,255,0.35); }
+.net-dot { width: 6px; height: 6px; border-radius: 50%; }
+.net-dot.green { background: #4CAF50; }
+.net-dot.yellow { background: #FFB74D; }
+.net-dot.red { background: #f44336; }
+.status-label { font-size: 11px; color: rgba(255,255,255,0.4); }
 
-/* ── 网络质量指示器 ── */
-.net-indicator {
-  display: flex; align-items: center; gap: 4px;
-  padding: 2px 8px; border-radius: 10px;
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.06);
-  font-size: 11px;
-}
-.net-dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  transition: all .3s;
-}
-.net-dot.green { background: #4CAF50; box-shadow: 0 0 4px rgba(76,175,80,0.4); }
-.net-dot.yellow { background: #FFB74D; box-shadow: 0 0 4px rgba(255,183,77,0.4); }
-.net-dot.red { background: #f44336; box-shadow: 0 0 4px rgba(244,67,54,0.4); }
-.net-dot.gray { background: #555; }
-.net-text { color: rgba(255,255,255,0.4); white-space: nowrap; }
-
-/* ── 状态灯 ── */
-.status-dot {
-  width: 10px; height: 10px; border-radius: 50%;
-  display: inline-block;
-  transition: all .3s;
-}
-.status-dot.idle { background: #4CAF50; box-shadow: 0 0 6px rgba(76,175,80,0.5); }
-.status-dot.recording { background: #f44336; box-shadow: 0 0 8px rgba(244,67,54,0.6); animation: pulse .8s infinite; }
-.status-dot.processing { background: #FFB74D; box-shadow: 0 0 6px rgba(255,183,77,0.5); }
-@keyframes pulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.3); }
-}
-
-/* ── 控制区 ── */
-.control-bar {
-  display: flex; align-items: center; gap: 12px;
-  padding: 10px 16px;
-  background: rgba(255,255,255,0.02);
-  border-bottom: 1px solid rgba(255,255,255,0.04);
-  flex-shrink: 0;
-  flex-wrap: wrap;
-}
-
-/* 模式切换 */
-.mode-toggle {
-  display: flex;
-  background: rgba(255,255,255,0.05);
-  border-radius: 8px;
-  overflow: hidden;
-  border: 1px solid rgba(255,255,255,0.08);
-}
-.mode-btn {
-  padding: 6px 14px;
-  font-size: 12px;
-  background: transparent;
-  border: none;
-  color: rgba(255,255,255,0.4);
-  cursor: pointer;
-  transition: all .2s;
-  white-space: nowrap;
-}
-.mode-btn.active {
-  background: #7C5CFC;
-  color: #fff;
-}
-.mode-btn:first-child { border-radius: 7px 0 0 7px; }
-.mode-btn:last-child { border-radius: 0 7px 7px 0; }
-
-/* ── 圆圈流水线 ── */
-.pipeline {
-  display: flex; align-items: center; gap: 6px;
-  margin-left: auto;
-}
-.ring-wrap {
-  position: relative; display: inline-flex;
-  width: 34px; height: 34px; align-items: center; justify-content: center;
-  cursor: pointer;
-}
-.ring-svg { position: absolute; top:0; left:0; width:100%; height:100%; transform: rotate(-90deg); }
-.ring-bg { fill:none; stroke:rgba(255,255,255,0.06); stroke-width:3; }
-.ring-fg { fill:none; stroke-width:3; stroke-linecap:round; transition: stroke-dashoffset 0.3s; }
-.ring-outer.clockwise .ring-fg { stroke:#7C5CFC; }
-.ring-outer.counter-clockwise .ring-fg { stroke:#FFB74D; }
-.ring-outer.idle .ring-fg { stroke:rgba(255,255,255,0.12); }
-.ring-outer.done .ring-fg { stroke:#4CAF50; opacity:0; transition: opacity 0.5s; }
-.ring-error {
-  position: absolute; top:0; left:0; width:100%; height:100%;
-  border-radius:50%; background:rgba(244,67,54,0.15);
-  display:none; align-items:center; justify-content:center;
-  font-size:9px; color:#f44336; font-weight:700;
-  border:2px solid rgba(244,67,54,0.3);
-}
-.ring-error.show { display:flex; }
-.ring-inner {
-  width:22px; height:22px; border-radius:50%;
-  display:flex; align-items:center; justify-content:center;
-  font-size:9px; font-weight:600; color:rgba(255,255,255,0.6);
-  transition: all 0.3s;
-  position: relative; z-index: 1;
-}
-.ring-inner.green  { background: rgba(76,175,80,0.2);  color: #81C784; }
-.ring-inner.yellow { background: rgba(255,183,77,0.2); color: #FFB74D; }
-.ring-inner.red    { background: rgba(244,67,54,0.2);  color: #f44336; }
-.ring-inner.gray   { background: rgba(255,255,255,0.03); color: rgba(255,255,255,0.2); }
-.ring-label {
-  position:absolute; bottom:-14px; left:50%; transform:translateX(-50%);
-  font-size:8px; color:rgba(255,255,255,0.2); white-space:nowrap;
-}
-.record-btn-wrap {
-  position: relative; display: inline-block; margin:0 4px;
-}
-.record-btn {
-  width: 48px; height: 48px;
-  border-radius: 50%;
-  border: 2px solid rgba(255,255,255,0.15);
-  background: rgba(255,255,255,0.05);
-  color: #e0e0e0;
-  font-size: 20px;
-  cursor: pointer;
-  transition: all .2s;
-  display: flex; align-items: center; justify-content: center;
-  position:relative; z-index:1;
-}
-.record-btn:active { transform: scale(0.92); }
-.record-btn.recording {
-  background: rgba(244,67,54,0.2);
-  border-color: #f44336;
-  color: #f44336;
-}
-.record-btn:disabled { opacity:0.4; cursor:not-allowed; }
-/* 麦克风外圈倒计时（conic-gradient 实现） */
-.mic-ring {
-  position:absolute; top:-4px; left:-4px; width:56px; height:56px; border-radius:50%;
-  background: conic-gradient(#7C5CFC var(--pct,0%), transparent var(--pct,0%));
-  mask: radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 3px));
-  -webkit-mask: radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 3px));
-  transition: background 0.3s;
-  pointer-events:none;
-}
-.mic-ring.idle { display:none; }
-.pipe-arrow { color:rgba(255,255,255,0.12); font-size:10px; user-select:none; }
-/* 打字发送按钮放控制栏 */
-.send-inline { display:flex; align-items:center; gap:4px; }
-.send-inline input {
-  width:120px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08);
-  border-radius:6px; padding:4px 8px; color:#e0e0e0; font-size:11px; outline:none;
-}
-.send-inline input:focus { border-color:rgba(124,92,252,0.4); }
-.send-inline .btn-send-s { padding:4px 10px; font-size:11px; border:none; border-radius:6px; background:#7C5CFC; color:#fff; cursor:pointer; }
-.send-inline .btn-send-s.btn-clear { background:transparent; color:rgba(255,255,255,0.4); }
-.send-inline .btn-send-s.btn-clear:hover { color:#f44336; }
-
-/* ── 消息区 ── */
 .msgs {
-  flex: 1; overflow-y: auto; padding: 12px 16px;
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px;
   scroll-behavior: smooth;
 }
-.msgs::-webkit-scrollbar { width: 4px; }
-.msgs::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+.msgs::-webkit-scrollbar { width: 3px; }
+.msgs::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
 
 .msg {
   display: flex;
-  margin-bottom: 16px;
-  animation: fadeIn .3s ease;
+  margin-bottom: 14px;
+  animation: fadeIn .25s ease;
 }
 .msg.user { justify-content: flex-end; }
 .msg.assistant { justify-content: flex-start; }
 .msg.system { justify-content: center; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 
-.msg .bubble-wrap { max-width: 80%; }
+.msg .bubble-wrap { max-width: 82%; }
 
 .msg .bubble {
-  padding: 10px 16px;
-  border-radius: 16px;
-  font-size: 14px; line-height: 1.6;
+  padding: 10px 14px;
+  border-radius: 18px;
+  font-size: 15px;
+  line-height: 1.55;
   word-break: break-word;
   white-space: pre-wrap;
   position: relative;
 }
 .msg.user .bubble {
-  background: #7C5CFC;
+  background: #5B4EF0;
   color: #fff;
   border-bottom-right-radius: 4px;
 }
 .msg.assistant .bubble {
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.08);
+  background: #1e1e2a;
+  border: 1px solid rgba(255,255,255,0.06);
   border-bottom-left-radius: 4px;
 }
 .msg.system .bubble {
   background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.06);
-  color: rgba(255,255,255,0.4);
-  font-size: 12px;
-  text-align: center;
-  border-radius: 8px;
-  padding: 4px 12px;
-}
-
-.msg .meta {
+  border: 1px solid rgba(255,255,255,0.04);
+  color: rgba(255,255,255,0.35);
   font-size: 11px;
-  color: rgba(255,255,255,0.3);
-  margin-top: 4px;
-  padding: 0 4px;
-  display: flex; gap: 8px; align-items: center;
+  text-align: center;
+  border-radius: 20px;
+  padding: 4px 14px;
 }
-.msg.user .meta { justify-content: flex-end; }
 
-.replay-btn {
-  background: none;
-  border: none;
-  color: rgba(255,255,255,0.3);
-  cursor: pointer;
-  font-size: 12px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  transition: all .2s;
-}
-.replay-btn:hover { color: #7C5CFC; background: rgba(124,92,252,0.1); }
-
-/* ── 输入区 ── */
-.input-area {
-  padding: 8px 16px 12px;
+.input-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 8px;
+  background: #1a1a24;
   border-top: 1px solid rgba(255,255,255,0.06);
-  background: rgba(255,255,255,0.02);
   flex-shrink: 0;
 }
-.input-row {
-  display: flex; gap: 8px; align-items: center;
+
+.record-btn {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.6);
+  font-size: 16px;
+  cursor: pointer;
+  transition: all .2s;
+  flex-shrink: 0;
 }
-.input-row input {
+.record-btn:active { transform: scale(0.92); }
+.record-btn.recording { background: #f44336; color: #fff; }
+
+.input-bar input {
   flex: 1;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 10px;
-  padding: 10px 14px;
+  background: #262633;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 20px;
+  padding: 8px 14px;
   color: #e0e0e0;
   font-size: 14px;
   outline: none;
   transition: border .2s;
+  min-width: 0;
 }
-.input-row input:focus { border-color: rgba(124,92,252,0.4); }
-.input-row input::placeholder { color: rgba(255,255,255,0.25); }
+.input-bar input:focus { border-color: rgba(91,78,240,0.4); }
+.input-bar input::placeholder { color: rgba(255,255,255,0.25); }
 
-.btn {
-  padding: 10px 18px;
+.send-btn {
+  width: 36px; height: 36px;
+  border-radius: 50%;
   border: none;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 500;
+  background: #5B4EF0;
+  color: #fff;
+  font-size: 16px;
   cursor: pointer;
   transition: all .2s;
-  white-space: nowrap;
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
 }
-.btn:active { transform: scale(0.96); }
-.btn-send { background: #7C5CFC; color: #fff; }
-.btn-send:disabled { opacity: 0.3; cursor: not-allowed; }
-.btn-clear { background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.5); border: 1px solid rgba(255,255,255,0.08); }
-.btn-clear:hover { background: rgba(244,67,54,0.1); color: #f44336; border-color: rgba(244,67,54,0.3); }
+.send-btn:active { transform: scale(0.92); }
+.send-btn:disabled { opacity: 0.3; cursor: not-allowed; background: rgba(255,255,255,0.06); }
 
-/* ── 响应式 ── */
-@media (max-width: 600px) {
-  .topbar { padding: 6px 10px; }
-  .topbar h1 { font-size: 14px; }
-  .tab { padding: 4px 10px; font-size: 11px; }
-  .control-bar { padding: 8px 10px; gap: 8px; }
-  .record-btn { width: 48px; height: 48px; font-size: 20px; }
-  .msgs { padding: 8px 10px; }
-  .msg .bubble { font-size: 13px; }
-  .input-area { padding: 6px 10px 10px; }
+.recording-hint {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.85);
+  color: #fff;
+  padding: 8px 20px;
+  border-radius: 20px;
+  font-size: 13px;
+  z-index: 10;
+  display: none;
+  backdrop-filter: blur(8px);
 }
+.recording-hint.show { display: block; animation: fadeIn .2s ease; }
+
+
 </style>
 </head>
 <body>
-<div class="app">
-  <!-- 顶部 -->
-  <div class="topbar">
-    <h1>🎙️ 语音通话</h1>
-    <div class="tabs">
-      <a href="/voice" class="tab active">🎙️ 语音</a>
-      <a href="/network" class="tab">🌐 网络</a>
-    </div>
-    <div class="topbar-right">
-      <div class="net-indicator" id="netIndicator" title="检测网络质量...">
-        <span class="net-dot" id="netDot"></span>
-        <span class="net-text" id="netText">网络...</span>
-      </div>
-      <span class="status-dot idle" id="statusDot" title="空闲"></span>
-      <span style="font-size:12px;color:rgba(255,255,255,0.4);" id="statusLabel">空闲</span>
-    </div>
-  </div>
-
-  <!-- 控制区 -->
-  <div class="control-bar">
-    <div class="mode-toggle">
-      <button class="mode-btn active" id="modeHold" title="按住说话，松开发送">按住</button>
-      <button class="mode-btn" id="modeAuto" title="点击开始，自动检测静音停止">监听</button>
-    </div>
-
-    <div class="record-btn-wrap">
-      <button class="record-btn" id="btnRecord" title="按住录音">🎤</button>
-      <div class="mic-ring" id="micRing"></div>
-    </div>
-
-    <span class="ctrl-label" id="ctrlHint" style="font-size:11px;color:rgba(255,255,255,0.35);">按住说话</span>
-
-    <!-- 流水线 -->
-    <div class="pipeline" id="pipeline">
-      <span class="pipe-arrow" style="margin-right:2px;">▶</span>
-
-      <!-- A3B -->
-      <div class="ring-wrap" title="A3B ASR 语音识别">
-        <svg class="ring-svg" viewBox="0 0 34 34"><circle class="ring-bg" cx="17" cy="17" r="14.5"/><circle class="ring-fg" id="ringA3B" cx="17" cy="17" r="14.5" stroke-dasharray="91" stroke-dashoffset="0"/></svg>
-        <div class="ring-inner gray" id="innerA3B">⚡</div>
-        <div class="ring-error" id="errA3B">✕</div>
-        <div class="ring-label">ASR</div>
-      </div>
-
-      <span class="pipe-arrow">▶</span>
-
-      <!-- Hermes -->
-      <div class="ring-wrap" title="Hermes 思考回答">
-        <svg class="ring-svg" viewBox="0 0 34 34"><circle class="ring-bg" cx="17" cy="17" r="14.5"/><circle class="ring-fg" id="ringHermes" cx="17" cy="17" r="14.5" stroke-dasharray="91" stroke-dashoffset="0"/></svg>
-        <div class="ring-inner gray" id="innerHermes">🤖</div>
-        <div class="ring-error" id="errHermes">✕</div>
-        <div class="ring-label">Hermes</div>
-      </div>
-
-      <span class="pipe-arrow">▶</span>
-
-      <!-- TTS -->
-      <div class="ring-wrap" title="文字转语音播放">
-        <svg class="ring-svg" viewBox="0 0 34 34"><circle class="ring-bg" cx="17" cy="17" r="14.5"/><circle class="ring-fg" id="ringTTS" cx="17" cy="17" r="14.5" stroke-dasharray="91" stroke-dashoffset="0"/></svg>
-        <div class="ring-inner gray" id="innerTTS">🔊</div>
-        <div class="ring-error" id="errTTS">✕</div>
-        <div class="ring-label">TTS</div>
-      </div>
-    </div>
-
-    <!-- 行内打字 -->
-    <div class="send-inline">
-      <input type="text" id="inputText" placeholder="打字..." maxlength="2000">
-      <button class="btn-send-s" id="btnSend" disabled>发送</button>
-      <button class="btn-send-s btn-clear" id="btnClear" title="清空对话">🗑️</button>
-    </div>
-  </div>
-
-  <!-- 消息区 -->
-  <div class="msgs" id="msgs">
-    <div class="msg system">
-      <div class="bubble-wrap">
-        <div class="bubble">🎙️ 语音通话已连接，开始对话吧</div>
-      </div>
-    </div>
+<!-- 登录页 -->
+<div class="login-page" id="loginPage">
+  <h1>🔐 Hermes</h1>
+  <p>请输入访问密码</p>
+  <div class="login-box">
+    <input type="password" id="loginInput" placeholder="输入密码" autofocus>
+    <div class="login-error" id="loginError"></div>
+    <button class="login-btn" id="loginBtn">进入</button>
   </div>
 </div>
 
+<!-- 主界面 -->
+<div class="app" id="app">
+  <div class="topbar">
+    <h1>Hermes</h1>
+    <div class="topbar-right">
+      <div class="net-indicator">
+        <span class="net-dot green" id="netDot"></span>
+        <span id="netText">网络...</span>
+      </div>
+      <span class="status-label" id="statusLabel">空闲</span>
+    </div>
+  </div>
+
+  <div class="msgs" id="msgs">
+    <div class="msg system">
+      <div class="bubble-wrap">
+        <div class="bubble">🎙️ 开始对话吧</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="input-bar">
+    <button class="record-btn" id="btnRecord" title="按住录音">🎤</button>
+    <input type="text" id="inputText" placeholder="输入消息..." maxlength="2000">
+    <button class="send-btn" id="btnSend" disabled>➤</button>
+  </div>
+</div>
+
+<div class="recording-hint" id="recordingHint">🎤 录音中...</div>
+
 <script>
 // ══════════════════════════════════════════
-// TimerRing：SVG 倒计时外圈
+// 登录
 // ══════════════════════════════════════════
-class TimerRing {
-  constructor(svgId, innerId, errId, totalSec, serviceName) {
-    this.svg = document.getElementById(svgId);
-    this.inner = document.getElementById(innerId);
-    this.err = document.getElementById(errId);
-    this.totalSec = totalSec;
-    this.circumference = 91; // 2*π*14.5 ≈ 91
-    this.remaining = 0;
-    this._timer = null;
-    this._parent = this.svg?.parentElement;
-    this.serviceName = serviceName || '';
-    this.diagCallback = null; // 诊断回调函数
-    // 点击红叉圆圈触发诊断
-    if (this._parent && this.serviceName) {
-      this._parent.addEventListener('click', () => this._onClick());
-    }
+(function(){
+  const loginPage = document.getElementById('loginPage');
+  const app = document.getElementById('app');
+  const loginInput = document.getElementById('loginInput');
+  const loginBtn = document.getElementById('loginBtn');
+  const loginError = document.getElementById('loginError');
+
+  // 检查是否已登录（sessionStorage）
+  if (sessionStorage.getItem('hermes_voice_auth') === '1') {
+    loginPage.style.display = 'none';
+    app.classList.add('show');
+    return;
   }
-  /** 点击处理 */
-  async _onClick() {
-    // 只有红叉状态才触发诊断
-    const isRedCross = this.err.classList.contains('show') && this.err.textContent === '✕';
-    if (!isRedCross) return;
-    // 防止重复诊断
-    if (this._diaging) return;
-    this._diaging = true;
-    this.err.textContent = '⟳';
-    try {
-      const resp = await fetch('/api/diag/check?service=' + encodeURIComponent(this.serviceName));
-      const result = await resp.json();
-      // 显示诊断结果
-      const alive = result.alive;
-      this.err.textContent = alive ? '✓' : '✕';
-      this.err.style.color = alive ? '#4CAF50' : '#f44336';
-      // 如果活过来了更新颜色
-      if (alive) this.setColor('green');
-      // 回调累计诊断结果
-      if (this.diagCallback) this.diagCallback(this.serviceName, result);
-    } catch(e) {
-      this.err.textContent = '!';
-    }
-    this._diaging = false;
+
+  function doLogin() {
+    const pw = loginInput.value.trim();
+    if (!pw) { loginError.textContent = '请输入密码'; return; }
+
+    // 验证密码 → 调用后端
+    fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw })
+    })
+    .then(r => r.json())
+    .then(d => {
+      if (d.status === 'ok') {
+        sessionStorage.setItem('hermes_voice_auth', '1');
+        loginPage.style.display = 'none';
+        app.classList.add('show');
+        // 加载完成后初始化
+        setTimeout(initApp, 100);
+      } else {
+        loginError.textContent = '密码错误';
+        loginInput.value = '';
+        loginInput.focus();
+      }
+    })
+    .catch(() => {
+      loginError.textContent = '验证服务不可用';
+    });
   }
-  /** 开始倒计时（秒数），方向 clockwise / counter-clockwise */
-  start(sec, dir = 'clockwise') {
-    this.stop();
-    this.remaining = sec || this.totalSec;
-    const p = this._parent;
-    if (p) {
-      // 移除 idle/done 状态
-      if (p.classList.contains('ring-outer')) { p.classList.remove('idle','done'); }
-      else { p.classList.add('ring-outer'); }
-      p.classList.remove('counter-clockwise','clockwise');
-      p.classList.add(dir);
-    }
-    this.inner.className = 'ring-inner'; // 重置颜色
-    this.err.classList.remove('show');
-    this.err.textContent = '';
-    this._update();
-    this._timer = setInterval(() => {
-      this.remaining = Math.max(0, this.remaining - 0.1);
-      this._update();
-      if (this.remaining <= 0) this.stop(true);
-    }, 100);
-  }
-  /** 标记完成（外圈消失） */
-  done() {
-    this.stop();
-    this.remaining = 0;
-    const p = this._parent;
-    if (p) { p.classList.add('done'); p.classList.remove('counter-clockwise','clockwise','idle'); }
-    this.inner.className = 'ring-inner gray';
-    this.err.classList.remove('show');
-  }
-  /** 标记空闲 */
-  idle() {
-    this.stop();
-    this.remaining = 0;
-    const p = this._parent;
-    if (p) { p.classList.add('idle'); p.classList.remove('counter-clockwise','clockwise','done'); }
-    this.inner.className = 'ring-inner gray';
-    this.err.classList.remove('show');
-  }
-  /** 标记连接失败（红色叉覆盖） */
-  error() {
-    this.stop();
-    this.remaining = 0;
-    const p = this._parent;
-    if (p) { p.classList.remove('counter-clockwise','clockwise','done','idle'); }
-    this.inner.className = 'ring-inner gray';
-    this.err.textContent = '✕';
-    this.err.style.color = '#f44336';
-    this.err.classList.add('show');
-  }
-  setColor(color) { this.inner.className = 'ring-inner ' + color; }
-  stop(keepRemaining) {
-    if (this._timer) { clearInterval(this._timer); this._timer = null; }
-    if (!keepRemaining) this.remaining = 0;
-    if (this.svg) this.svg.setAttribute('stroke-dashoffset', this.circumference);
-  }
-  _update() {
-    const pct = this.remaining / this.totalSec;
-    const offset = this.circumference * (1 - pct);
-    this.svg?.setAttribute('stroke-dashoffset', Math.max(0, Math.min(this.circumference, offset)));
-  }
-}
+
+  loginInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') doLogin();
+  });
+  loginBtn.addEventListener('click', doLogin);
+  loginInput.focus();
+})();
 
 // ══════════════════════════════════════════
-// 状态
+// 配置
 // ══════════════════════════════════════════
-const STATE = { IDLE: "idle", RECORDING: "recording", PROCESSING: "processing" };
-let mode = "hold";   // "auto" | "hold"（默认按住说话，ScriptProcessorNode 在 Edge 已废弃）
-let state = STATE.IDLE;
+const ASR_URL = '/api/asr';
+const CHAT_URL = '/api/chat';
+const TTS_URL = '/api/tts';
+const TTS_FALLBACK_URL = '/api/tts-fallback';
+
+// ══════════════════════════════════════════
+// 录音
+// ══════════════════════════════════════════
 let mediaRecorder = null;
 let audioChunks = [];
+let isRecording = false;
+let isProcessing = false;
 let stream = null;
-let isSending = false;
-let recordingTimeout = null;
 
-// DOM
-const msgsEl = document.getElementById("msgs");
-const btnRecord = document.getElementById("btnRecord");
-const btnSend = document.getElementById("btnSend");
-const inputText = document.getElementById("inputText");
-const statusDot = document.getElementById("statusDot");
-const statusLabel = document.getElementById("statusLabel");
-const ctrlHint = document.getElementById("ctrlHint");
-const btnClear = document.getElementById("btnClear");
-
-// ══════════════════════════════════════════
-// 流水线圈初始化
-// ══════════════════════════════════════════
-const ringA3B   = new TimerRing('ringA3B',   'innerA3B',   'errA3B',   30, 'asr');
-const ringHermes= new TimerRing('ringHermes','innerHermes','errHermes',30, 'hermes');
-const ringTTS   = new TimerRing('ringTTS',   'innerTTS',   'errTTS',   30, 'tts');
-let diagResults = []; // 诊断结果累计
-
-// 诊断回调：累计结果，满3个或首次诊断后汇总
-function onDiagResult(svc, result) {
-  diagResults.push({ service: svc, time: new Date().toLocaleString(), result });
-  // 首次诊断后，显示汇总提示
-  const status = result.alive ? '✅ 正常' : '❌ 异常';
-  addSystemMsg(`🔍 [诊断] ${svc.toUpperCase()}: ${status} (${result.host}:${result.port})`);
-  // 诊断完所有红叉服务后，汇总发给 Hermes
-  const errorSvcs = diagResults.filter(r => !r.result.alive);
-  if (errorSvcs.length > 0 && errorSvcs.length === ['asr','hermes','tts'].filter(
-    s => document.getElementById('err' + s.charAt(0).toUpperCase() + s.slice(1))?.classList.contains('show')
-  ).length) {
-    sendDiagSummary();
-  }
-}
-
-async function sendDiagSummary() {
-  const errList = diagResults.filter(r => !r.result.alive).map(r =>
-    `- ${r.service.toUpperCase()} (${r.result.host}:${r.result.port}): ${r.result.error || '连接失败'}`
-  ).join('\n');
-  if (!errList) return;
-  const text = `[诊断报告] 发现以下服务异常:\n${errList}\n\n请排查。`;
-  addSystemMsg('📋 ' + text);
-}
-
-// 绑定诊断回调
-ringA3B.diagCallback = onDiagResult;
-ringHermes.diagCallback = onDiagResult;
-ringTTS.diagCallback = onDiagResult;
-const micRingEl = document.getElementById('micRing');
-let micRingTimer = null;
-const MIC_MAX_SEC = 90;
-
-function micRingStart() {
-  micRingEl.classList.remove('idle');
-  let sec = MIC_MAX_SEC;
-  micRingEl.style.setProperty('--pct', '0%');
-  micRingTimer = setInterval(() => {
-    sec = Math.max(0, sec - 0.1);
-    micRingEl.style.setProperty('--pct', ((1 - sec/MIC_MAX_SEC)*100) + '%');
-  }, 100);
-}
-function micRingStop() {
-  if (micRingTimer) { clearInterval(micRingTimer); micRingTimer = null; }
-  micRingEl.classList.add('idle');
-  micRingEl.style.setProperty('--pct', '0%');
-}
-
-// ══════════════════════════════════════════
-// 网络质量检测 → 流水线圈颜色
-// ══════════════════════════════════════════
-const RING_LAT = { green: 35, yellow: 350, red: 6000 };
-
-function latToColor(lat) {
-  if (lat < 0) return 'gray';
-  if (lat <= RING_LAT.green) return 'green';
-  if (lat <= RING_LAT.yellow) return 'yellow';
-  return 'red';
-}
-
-async function checkPipelineNetwork() {
+async function startRecording() {
+  if (isRecording || isProcessing) return;
   try {
-    const resp = await fetch("/api/network/preview");
-    const data = await resp.json();
-    // 找到各服务的延迟（适配不同的预览路径命名）
-    const findLat = (label) => {
-      const p = data.previews?.find(x => x.to === label || x.to?.includes?.(label));
-      return p ? p.latency : -1;
+    if (!stream) {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    }
+    audioChunks = [];
+    const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
+    mediaRecorder = new MediaRecorder(stream, { mimeType: mime });
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+    mediaRecorder.onstop = () => {
+      isRecording = false;
+      document.getElementById('btnRecord').classList.remove('recording');
+      document.getElementById('recordingHint').classList.remove('show');
+      document.getElementById('statusLabel').textContent = '识别中';
+      if (audioChunks.length > 0) sendAudio();
     };
-    const asrLat = findLat('asr');
-    const ttsLat = findLat('tts');
-    const chatLat = findLat('chat');
-
-    ringA3B.setColor(latToColor(asrLat));
-    ringTTS.setColor(latToColor(ttsLat));
-    // Hermes 用 chat 延迟
-    ringHermes.setColor(latToColor(chatLat));
-
-    // 如果连接不通，显示红色叉
-    if (asrLat < 0) ringA3B.error(); else ringA3B.idle();
-    if (chatLat < 0) ringHermes.error(); else ringHermes.idle();
-    if (ttsLat < 0) ringTTS.error(); else ringTTS.idle();
-
+    mediaRecorder.start(250);
+    isRecording = true;
+    document.getElementById('btnRecord').classList.add('recording');
+    document.getElementById('recordingHint').classList.add('show');
+    document.getElementById('statusLabel').textContent = '录音中';
   } catch(e) {
-    ringA3B.error();
-    ringHermes.error();
-    ringTTS.error();
+    console.error('录音启动失败:', e);
+    addSystemMsg('麦克风不可用');
   }
 }
 
-// 初始检测 + 每15秒刷新
-checkPipelineNetwork();
-setInterval(checkPipelineNetwork, 15000);
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop();
+  }
+}
+
+// 录音按钮
+document.getElementById('btnRecord').addEventListener('mousedown', () => {
+  startRecording();
+});
+document.getElementById('btnRecord').addEventListener('mouseup', () => {
+  if (isRecording) stopRecording();
+});
+document.getElementById('btnRecord').addEventListener('mouseleave', () => {
+  if (isRecording) stopRecording();
+});
+document.getElementById('btnRecord').addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  startRecording();
+});
+document.getElementById('btnRecord').addEventListener('touchend', (e) => {
+  e.preventDefault();
+  if (isRecording) stopRecording();
+});
+
+async function sendAudio() {
+  isProcessing = true;
+  try {
+    const blob = new Blob(audioChunks, { type: audioChunks[0]?.type || 'audio/webm' });
+    let text = '';
+
+    let asrResp = await fetch(ASR_URL, { method: 'POST', body: blob });
+    if (!asrResp.ok) { addSystemMsg('ASR 识别失败'); isProcessing = false; return; }
+    let asrResult = await asrResp.json();
+    text = (asrResult.text || '').trim();
+    if (!text) { addSystemMsg('未识别到语音'); isProcessing = false; return; }
+    addMsg('user', text, true);
+
+    document.getElementById('statusLabel').textContent = '思考中';
+    let chatResp = await fetch(CHAT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+    if (!chatResp.ok) { addSystemMsg('对话失败'); isProcessing = false; return; }
+    let chatResult = await chatResp.json();
+    let reply = (chatResult.text || '').trim();
+    if (!reply) { addSystemMsg('Hermes 无回复'); isProcessing = false; return; }
+    addMsg('assistant', reply);
+
+    document.getElementById('statusLabel').textContent = '播放中';
+    try {
+      let ttsResp = await fetch(TTS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: reply.substring(0, 200) })
+      });
+      if (ttsResp.ok && ttsResp.headers.get('content-type')?.startsWith('audio/')) {
+        playAudio(await ttsResp.blob());
+      } else {
+        let fb = await fetch(TTS_FALLBACK_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: reply.substring(0, 200) })
+        });
+        if (fb.ok) playAudio(await fb.blob());
+      }
+    } catch(e) { console.warn('TTS 失败:', e); }
+  } catch(e) { console.error('处理异常:', e); addSystemMsg('处理异常'); }
+  isProcessing = false;
+  document.getElementById('statusLabel').textContent = '空闲';
+}
+
+function playAudio(blob) {
+  const url = URL.createObjectURL(blob);
+  const audio = new Audio(url);
+  audio.onended = () => URL.revokeObjectURL(url);
+  audio.play().catch(e => console.warn('播放失败:', e));
+}
 
 // ══════════════════════════════════════════
-// 状态管理
+// 文字发送
 // ══════════════════════════════════════════
-function setStatus(s) {
-  state = s;
-  statusDot.className = "status-dot " + s;
-  const labels = { idle: "空闲", recording: "录音中...", processing: "处理中..." };
-  statusLabel.textContent = labels[s] || s;
-  btnRecord.disabled = (s === STATE.PROCESSING);
-  if (s === STATE.RECORDING) {
-    btnRecord.classList.add("recording");
-    btnRecord.textContent = "⏹";
-  } else {
-    btnRecord.classList.remove("recording");
-    btnRecord.textContent = "🎤";
+const input = document.getElementById('inputText');
+const sendBtn = document.getElementById('btnSend');
+
+input.addEventListener('input', () => {
+  sendBtn.disabled = !input.value.trim();
+});
+input.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendText();
   }
+});
+sendBtn.addEventListener('click', sendText);
+
+async function sendText() {
+  const text = input.value.trim();
+  if (!text || isProcessing) return;
+  input.value = '';
+  sendBtn.disabled = true;
+  addMsg('user', text);
+  isProcessing = true;
+  document.getElementById('statusLabel').textContent = '思考中';
+
+  try {
+    let chatResp = await fetch(CHAT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+    if (!chatResp.ok) { addSystemMsg('对话失败'); isProcessing = false; return; }
+    let chatResult = await chatResp.json();
+    let reply = (chatResult.text || '').trim();
+    if (!reply) { addSystemMsg('Hermes 无回复'); isProcessing = false; return; }
+    addMsg('assistant', reply);
+
+    document.getElementById('statusLabel').textContent = '播放中';
+    try {
+      let ttsResp = await fetch(TTS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: reply.substring(0, 200) })
+      });
+      if (ttsResp.ok && ttsResp.headers.get('content-type')?.startsWith('audio/')) {
+        playAudio(await ttsResp.blob());
+      } else {
+        let fb = await fetch(TTS_FALLBACK_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: reply.substring(0, 200) })
+        });
+        if (fb.ok) playAudio(await fb.blob());
+      }
+    } catch(e) { console.warn('TTS 失败:', e); }
+  } catch(e) { console.error('对话异常:', e); addSystemMsg('对话异常'); }
+  isProcessing = false;
+  document.getElementById('statusLabel').textContent = '空闲';
 }
 
 // ══════════════════════════════════════════
 // 消息渲染
 // ══════════════════════════════════════════
-function addMsg(role, content, timestamp) {
-  const div = document.createElement("div");
-  div.className = "msg " + role;
+const msgsEl = document.getElementById('msgs');
 
-  const time = timestamp || new Date().toLocaleTimeString();
-  let replayBtn = "";
-  if (role === "assistant") {
-    replayBtn = `<button class="replay-btn" onclick="replayTTS(this)" data-text="${escapeAttr(content.slice(0, 200))}">🔊 重播</button>`;
+function addMsg(role, content, isVoice = false) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  let prefix = '';
+  if (role === 'user' && isVoice) {
+    prefix = '<span style="margin-right:6px;">🎤</span>';
   }
-
-  div.innerHTML = `
-    <div class="bubble-wrap">
-      <div class="bubble">${escapeHtml(content)}</div>
-      <div class="meta">
-        <span>${time}</span>
-        ${replayBtn}
-      </div>
-    </div>
-  `;
+  div.innerHTML = `<div class="bubble-wrap"><div class="bubble">${prefix}${escapeHtml(content)}</div></div>`;
   msgsEl.appendChild(div);
   msgsEl.scrollTop = msgsEl.scrollHeight;
 }
 
 function addSystemMsg(text) {
-  const div = document.createElement("div");
-  div.className = "msg system";
+  const div = document.createElement('div');
+  div.className = 'msg system';
   div.innerHTML = `<div class="bubble-wrap"><div class="bubble">${escapeHtml(text)}</div></div>`;
   msgsEl.appendChild(div);
   msgsEl.scrollTop = msgsEl.scrollHeight;
 }
 
-function escapeHtml(text) {
-  const d = document.createElement("div");
-  d.textContent = text;
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
   return d.innerHTML;
 }
 
-function escapeAttr(text) {
-  return text.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
 // ══════════════════════════════════════════
-// 录音
+// 网络检测
 // ══════════════════════════════════════════
-
-// ---- WebRTC VAD 状态 ----
-let vadInstance = null;  // vad.MicVAD 实例
-
-/** Float32Array → WAV Blob (16kHz mono 16-bit PCM) */
-function float32ToWav(samples, sampleRate) {
-  const numSamples = samples.length;
-  const buffer = new ArrayBuffer(44 + numSamples * 2);
-  const view = new DataView(buffer);
-  // RIFF header
-  writeString(view, 0, 'RIFF');
-  view.setUint32(4, 36 + numSamples * 2, true);
-  writeString(view, 8, 'WAVE');
-  writeString(view, 12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);       // PCM
-  view.setUint16(22, 1, true);       // mono
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
-  writeString(view, 36, 'data');
-  view.setUint32(40, numSamples * 2, true);
-  // PCM data
-  for (let i = 0; i < numSamples; i++) {
-    const s = Math.max(-1, Math.min(1, samples[i]));
-    view.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-  }
-  return new Blob([buffer], { type: 'audio/wav' });
-}
-function writeString(view, offset, str) {
-  for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+function initApp() {
+  checkNet();
+  setInterval(checkNet, 15000);
 }
 
-/** 纯浏览器 VAD：ScriptProcessorNode + RMS 能量检测，零外部依赖 */
-async function startAutoVAD() {
-  if (state === STATE.PROCESSING) return;
-  forceCleanup();
-
+async function checkNet() {
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: true }
-    });
-
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    window.audioCtx = audioCtx; // 给 TTS 复用
-    const source = audioCtx.createMediaStreamSource(stream);
-
-    // ScriptProcessorNode: 每帧分析 RMS 能量
-    const processor = audioCtx.createScriptProcessor(4096, 1, 1);
-
-    let speechFrames = 0;
-    let silenceFrames = 0;
-    const SPEECH_THRESHOLD = 0.015;      // RMS 语音阈值
-    const SILENCE_FRAMES_MAX = 20;       // 连续静音帧数（约 20*4096/16000 ≈ 5 秒静音判定结束）
-    const SPEECH_FRAMES_MIN = 2;         // 最少语音帧数才视为有效说话
-    let isSpeaking = false;
-    let audioBuffer = [];
-    let recordingTimeoutId = null;
-
-    processor.onaudioprocess = (e) => {
-      const input = e.inputBuffer.getChannelData(0);
-      // 计算 RMS
-      let sum = 0;
-      for (let i = 0; i < input.length; i++) {
-        sum += input[i] * input[i];
-      }
-      const rms = Math.sqrt(sum / input.length);
-      const isSpeech = rms > SPEECH_THRESHOLD;
-
-      if (isSpeech) {
-        speechFrames++;
-        silenceFrames = 0;
-        audioBuffer.push(new Float32Array(input));
-
-        if (!isSpeaking && speechFrames >= SPEECH_FRAMES_MIN) {
-          isSpeaking = true;
-          setStatus(STATE.RECORDING);
-          ctrlHint.textContent = "🎤 正在听...";
-          addSystemMsg("🎤 开始录音...");
-        }
-      } else {
-        silenceFrames++;
-        if (isSpeaking) {
-          audioBuffer.push(new Float32Array(input)); // 保留静音尾音
-          if (silenceFrames >= SILENCE_FRAMES_MAX) {
-            // 说话结束
-            isSpeaking = false;
-            setStatus(STATE.PROCESSING);
-            ctrlHint.textContent = "正在识别语音...";
-            addSystemMsg("🔍 语音结束，正在识别...");
-
-            // 合并音频缓冲区
-            const totalLen = audioBuffer.reduce((sum, arr) => sum + arr.length, 0);
-            const merged = new Float32Array(totalLen);
-            let offset = 0;
-            for (const arr of audioBuffer) {
-              merged.set(arr, offset);
-              offset += arr.length;
-            }
-            audioBuffer = [];
-
-            const wavBlob = float32ToWav(merged, audioCtx.sampleRate);
-            audioChunks = [wavBlob];
-            processAudio();
-          }
-        }
-      }
-    };
-
-    processor.connect(audioCtx.destination);
-    vadInstance = { processor, source, audioCtx };
-    setStatus(STATE.RECORDING);
-    ctrlHint.textContent = "🎤 持续监听中...";
-  } catch (e) {
-    console.error("VAD启动失败:", e);
-    addSystemMsg("⚠️ VAD启动失败: " + e.message);
-    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
-    setStatus(STATE.IDLE);
-  }
+    let r = await fetch('/api/network/config');
+    let d = await r.json();
+    let mode = d.auto_mode || d.mode || '';
+    document.getElementById('netText').textContent = mode === 'office' ? '🏢' : mode === 'home' ? '🏠' : '🌐';
+  } catch(e) { document.getElementById('netText').textContent = '⚠️'; }
 }
-
-function stopAutoVAD() {
-  if (vadInstance) {
-    try {
-      vadInstance.processor.disconnect();
-      vadInstance.source.disconnect();
-    } catch(e) {}
-    try { vadInstance.audioCtx.close(); } catch(e) {}
-    vadInstance = null;
-  }
-  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
-  stream = null;
-  setStatus(STATE.IDLE);
-}
-
-// ---- 旧版 MediaRecorder（按住说话模式） ----
-async function startMediaRecorder() {
-  if (state === STATE.PROCESSING) return;
-  if (state === STATE.RECORDING) return;
-
-  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
-
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
-    audioChunks = [];
-
-    mediaRecorder.ondataavailable = (e) => {
-      if (e.data.size > 0) audioChunks.push(e.data);
-    };
-
-    mediaRecorder.onstop = async () => {
-      micRingStop(); // ← 停止麦克风倒计时
-      if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
-      if (recordingTimeout) { clearTimeout(recordingTimeout); recordingTimeout = null; }
-
-      if (audioChunks.length > 0 && state !== STATE.IDLE) {
-        setStatus(STATE.PROCESSING);
-        await processAudio();
-      }
-    };
-
-    mediaRecorder.start(250);
-    micRingStart(); // ← 开始麦克风倒计时
-    setStatus(STATE.RECORDING);
-
-    recordingTimeout = setTimeout(() => {
-      if (state === STATE.RECORDING) {
-        stopMediaRecorder();
-        addSystemMsg("⏱️ 录音超时60秒，自动停止");
-      }
-    }, 60000);
-
-  } catch (e) {
-    console.error("录音失败:", e);
-    addSystemMsg("⚠️ 录音失败: " + e.message);
-    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
-    setStatus(STATE.IDLE);
-  }
-}
-
-function stopMediaRecorder() {
-  if (mediaRecorder && mediaRecorder.state !== "inactive") {
-    mediaRecorder.stop();
-  } else {
-    forceCleanup();
-  }
-}
-
-function forceCleanup() {
-  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
-  if (vadInstance) { try { vadInstance.destroy(); } catch(e) {} vadInstance = null; }
-  if (recordingTimeout) { clearTimeout(recordingTimeout); recordingTimeout = null; }
-  setStatus(STATE.IDLE);
-}
-
-// ---- 统一入口 ----
-async function startRecording() {
-  if (mode === "auto") {
-    // 持续监听 → WebRTC VAD
-    addSystemMsg("🎤 启动持续监听...");
-    await startAutoVAD();
-  } else {
-    await startMediaRecorder();
-  }
-}
-
-function stopRecording() {
-  if (mode === "auto") {
-    stopAutoVAD();
-  } else {
-    stopMediaRecorder();
-  }
-}
-
-// ══════════════════════════════════════════
-// 处理音频：ASR → LLM → 显示 + TTS
-// ══════════════════════════════════════════
-async function processAudio() {
-  if (audioChunks.length === 0) {
-    setStatus(STATE.IDLE);
-    return;
-  }
-
-  ctrlHint.textContent = "正在识别语音...";
-
-  try {
-    // audioChunks 可能是 [wavBlob]（VAD模式）或 [webm,webm...]（按住说话模式）
-    const first = audioChunks[0];
-    const isWav = first instanceof Blob && first.type === 'audio/wav';
-    const blob = isWav ? first : new Blob(audioChunks, { type: "audio/webm" });
-
-    // 1. ASR
-    ringA3B.start(30, 'counter-clockwise'); // 逆时针30秒倒计时
-    const asrResp = await fetch("/api/asr", { method: "POST", body: blob });
-    const asrResult = await asrResp.json();
-
-    if (asrResult.error) {
-      ringA3B.done();
-      addSystemMsg("⚠️ ASR 识别失败: " + asrResult.error);
-      setStatus(STATE.IDLE);
-      ctrlHint.textContent = "按住按钮说话，松开发送";
-      return;
-    }
-
-    const userText = asrResult.text;
-    if (!userText) {
-      ringA3B.done();
-      addSystemMsg("⚠️ 未识别到语音");
-      setStatus(STATE.IDLE);
-      ctrlHint.textContent = "按住按钮说话，松开发送";
-      return;
-    }
-    ringA3B.done(); // ASR 完成
-
-    // 显示用户消息
-    addMsg("user", userText);
-
-    // 2. 同步到历史记录（只存档到文件，不自动存记忆）
-    await fetch("/api/sync_chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role: "user", content: userText }),
-    });
-
-    // 3. LLM 对话
-    ctrlHint.textContent = "Hermes 正在思考...";
-    ringHermes.start(30, 'counter-clockwise'); // Hermes 30秒逆时针倒计时
-    const chatResp = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: userText }),
-    });
-    const chatResult = await chatResp.json();
-
-    if (chatResult.error) {
-      ringHermes.done();
-      addSystemMsg("⚠️ LLM 回复失败: " + chatResult.error);
-      // 回退：调用 DeepSeek 直接发
-      setStatus(STATE.IDLE);
-      ctrlHint.textContent = "按住按钮说话，松开发送";
-      return;
-    }
-
-    const reply = chatResult.text;
-    ringHermes.done(); // Hermes 完成
-    addMsg("assistant", reply);
-
-    // 4. 同步到历史记录（只存档到文件，不自动存记忆）
-    await fetch("/api/sync_chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role: "assistant", content: reply }),
-    });
-
-    // 5. TTS 播放
-    ctrlHint.textContent = "正在播放语音...";
-    ringTTS.start(30, 'counter-clockwise'); // TTS 30秒逆时针倒计时
-    await playTTS(reply);
-    ringTTS.done(); // TTS 完成
-
-    ctrlHint.textContent = "按住按钮说话，松开发送";
-
-  } catch (e) {
-    console.error("处理错误:", e);
-    addSystemMsg("⚠️ 处理失败: " + e.message);
-  }
-
-  setStatus(STATE.IDLE);
-  audioChunks = [];
-}
-
-// ══════════════════════════════════════════
-// TTS 播放 — 用 AudioContext 绕过浏览器自动播放限制
-// ══════════════════════════════════════════
-
-// 记录在用户手势中创建的 AudioContext，用于后续 TTS 播放
-let _ttsCtx = null;
-
-/** 获取一个已授权（用户手势）的 AudioContext */
-async function _getTTSAudioContext() {
-  // 优先用录音时创建的 audioCtx，它在用户手势中初始化
-  let ctx = window.audioCtx;
-  if (!ctx || ctx.state === 'closed') {
-    if (!_ttsCtx || _ttsCtx.state === 'closed') {
-      _ttsCtx = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    ctx = _ttsCtx;
-  }
-  // AudioContext 可能被浏览器 suspend，尝试唤醒
-  if (ctx.state === 'suspended') {
-    try { await ctx.resume(); } catch (e) {}
-  }
-  return ctx;
-}
-
-/** 通过 AudioContext 播放 Blob 音频，不走 HTMLAudioElement */
-async function _playWithAudioContext(blob) {
-  const ctx = await _getTTSAudioContext();
-  const buf = await blob.arrayBuffer();
-  const audioBuf = await ctx.decodeAudioData(buf);
-  const source = ctx.createBufferSource();
-  source.buffer = audioBuf;
-  source.connect(ctx.destination);
-  source.start(0);
-  // 返回一个 Promise，等播放完成 resolve
-  return new Promise((resolve) => {
-    source.onended = resolve;
-  });
-}
-
-/** 主入口：获取 TTS 音频并播放 */
-async function playTTS(text) {
-  try {
-    const resp = await fetch("/api/tts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: text.slice(0, 100) }), // TTS只播前100字摘要
-    });
-
-    if (!resp.ok) {
-      const fb = await fetch("/api/tts-fallback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: text.slice(0, 100) }),
-      });
-      if (fb.ok) {
-        await _playWithAudioContext(await fb.blob());
-      }
-      return;
-    }
-
-    const contentType = resp.headers.get("content-type") || "";
-    if (contentType.includes("application/json")) {
-      const data = await resp.json();
-      if (data.fallback) {
-        const fb = await fetch("/api/tts-fallback", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: text.slice(0, 100) }),
-        });
-        if (fb.ok) {
-          await _playWithAudioContext(await fb.blob());
-        }
-      }
-      return;
-    }
-
-    // wav 播放
-    await _playWithAudioContext(await resp.blob());
-  } catch (e) {
-    console.warn("TTS 播放失败:", e);
-  }
-}
-
-// ══════════════════════════════════════════
-// 测试模式：双击录音按钮 → 生成测试 WAV → 走全链路
-// ══════════════════════════════════════════
-async function runTestPipeline() {
-  if (state === STATE.PROCESSING) return;
-  addSystemMsg("🧪 测试模式：生成测试音频...");
-
-  // 生成 1 秒 440Hz 正弦波 WAV（16kHz，16-bit PCM mono）
-  const sampleRate = 16000;
-  const duration = 1.0;
-  const numSamples = Math.floor(sampleRate * duration);
-  const buffer = new ArrayBuffer(44 + numSamples * 2);
-  const view = new DataView(buffer);
-  writeString(view, 0, 'RIFF');
-  view.setUint32(4, 36 + numSamples * 2, true);
-  writeString(view, 8, 'WAVE');
-  writeString(view, 12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);       // PCM
-  view.setUint16(22, 1, true);       // mono
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true);
-  view.setUint16(32, 2, true);       // block align
-  view.setUint16(34, 16, true);      // bits per sample
-  writeString(view, 36, 'data');
-  view.setUint32(40, numSamples * 2, true);
-  for (let i = 0; i < numSamples; i++) {
-    const v = Math.sin(2 * Math.PI * 440 * i / sampleRate) * 0.3;
-    view.setInt16(44 + i * 2, v * 0x7FFF, true);
-  }
-  const testBlob = new Blob([buffer], { type: 'audio/wav' });
-
-  addSystemMsg(`🧪 测试音频已生成 (${(testBlob.size / 1024).toFixed(1)}KB)，发送 ASR...`);
-
-  // 用 processAudio 相同的流程
-  audioChunks = [testBlob];
-  await processAudio();
-}
-
-// ══════════════════════════════════════════
-// 重播按钮
-// ══════════════════════════════════════════
-async function replayTTS(btn) {
-  const text = btn.getAttribute("data-text");
-  if (text) await playTTS(text);
-}
-// 录音按钮事件：统一用 click 触发
-// ══════════════════════════════════════════
-let lastClickTime = 0;
-let clickTimer = null;
-
-btnRecord.addEventListener("click", (e) => {
-  const now = Date.now();
-  if (now - lastClickTime < 400) {
-    // 双击检测
-    if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
-    // 弹出测试对话框
-    const testConfirm = confirm("🔍 测试模式\n\n点击「确定」从测试 WAV 文件发送到服务器，验证 ASR → Chat → TTS 全链路。\n点击「取消」取消。");
-    if (testConfirm) {
-      runTestPipeline();
-    }
-    lastClickTime = 0;
-    return;
-  }
-  lastClickTime = now;
-  clickTimer = setTimeout(() => {
-    clickTimer = null;
-    // 单击：正常录音逻辑
-    if (mode === "auto") {
-      if (state === STATE.RECORDING) {
-        stopRecording();
-      } else if (state === STATE.IDLE) {
-        startRecording();
-      }
-    } else {
-      if (state === STATE.RECORDING) {
-        stopRecording();
-      } else if (state === STATE.IDLE) {
-        startRecording();
-      }
-    }
-  }, 400);
-});
-
-// 全局 mouseup 兜底（按住说话模式松手停，只在按钮mousedown后生效）
-let _holdActive = false;
-document.addEventListener("mousedown", (e) => {
-  if (mode === "hold" && e.target === btnRecord) {
-    _holdActive = true;
-  }
-});
-document.addEventListener("mouseup", () => {
-  if (mode === "hold" && _holdActive && state === STATE.RECORDING) {
-    _holdActive = false;
-    stopRecording();
-  }
-});
-
-// ══════════════════════════════════════════
-// 模式切换
-// ══════════════════════════════════════════
-document.getElementById("modeHold").onclick = () => {
-  mode = "hold";
-  if (state === STATE.RECORDING) stopRecording();
-  document.getElementById("modeHold").classList.add("active");
-  document.getElementById("modeAuto").classList.remove("active");
-  ctrlHint.textContent = "按住按钮说话，松开发送";
-  btnRecord.title = "按住录音";
-};
-
-document.getElementById("modeAuto").onclick = () => {
-  mode = "auto";
-  document.getElementById("modeHold").classList.remove("active");
-  document.getElementById("modeAuto").classList.add("active");
-  ctrlHint.textContent = "单击开始录音，静音自动停止";
-  btnRecord.title = "单击开始/停止";
-};
-
-// ══════════════════════════════════════════
-// 打字发送
-// ══════════════════════════════════════════
-inputText.addEventListener("input", () => {
-  btnSend.disabled = !inputText.value.trim();
-});
-
-inputText.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") {
-    e.preventDefault();
-    sendText();
-  }
-});
-
-btnSend.onclick = sendText;
-
-async function sendText() {
-  const text = inputText.value.trim();
-  if (!text) return;
-  if (isSending) return;
-  isSending = true;
-  btnSend.disabled = true;
-
-  addMsg("user", text);
-  inputText.value = "";
-
-  setStatus(STATE.PROCESSING);
-  ctrlHint.textContent = "Hermes 正在思考...";
-
-  try {
-    // 同步（只存档到文件，不自动存记忆）
-    await fetch("/api/sync_chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role: "user", content: text }),
-    });
-
-    ringHermes.start(30, 'counter-clockwise');
-    const chatResp = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
-    });
-    const chatResult = await chatResp.json();
-
-    if (chatResult.error) {
-      ringHermes.done();
-      addSystemMsg("⚠️ " + chatResult.error);
-    } else {
-      const reply = chatResult.text;
-      ringHermes.done();
-      addMsg("assistant", reply);
-
-      await fetch("/api/sync_chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: "assistant", content: reply }),
-      });
-
-      ctrlHint.textContent = "正在播放语音...";
-      ringTTS.start(30, 'counter-clockwise');
-      await playTTS(reply);
-      ringTTS.done();
-    }
-  } catch (e) {
-    ringHermes.done();
-    addSystemMsg("⚠️ " + e.message);
-  }
-
-  setStatus(STATE.IDLE);
-  ctrlHint.textContent = mode === "hold" ? "按住按钮说话，松开发送" : "单击开始录音，静音自动停止";
-  isSending = false;
-}
-
-// ══════════════════════════════════════════
-// 清空
-// ══════════════════════════════════════════
-if (btnClear) {
-btnClear.onclick = async () => {
-  if (!confirm("清空当前对话？")) return;
-  try {
-    await fetch("/api/clear_current_chat", { method: "POST" });
-    msgsEl.innerHTML = `
-      <div class="msg system">
-        <div class="bubble-wrap">
-          <div class="bubble">🗑️ 对话已清空</div>
-        </div>
-      </div>
-    `;
-  } catch (e) {
-    console.error("清空失败", e);
-  }
-};
-}
-
-// ══════════════════════════════════════════
-// 网络质量检测（本机 → TTS 服务器）
-// ══════════════════════════════════════════
-async function checkNetworkQuality() {
-  const dot = document.getElementById("netDot");
-  const text = document.getElementById("netText");
-  try {
-    const resp = await fetch("/api/network/preview");
-    const data = await resp.json();
-    // 找到本机→TTS 的路径
-    const ttsPath = data.previews.find(p => p.to === "tts" && p.from === "bt2");
-    if (ttsPath && ttsPath.latency >= 0) {
-      const lat = ttsPath.latency;
-      dot.className = "net-dot " + (lat < 10 ? "green" : lat < 50 ? "yellow" : "red");
-      text.textContent = ttsPath.chosen.toUpperCase() + " " + lat.toFixed(1) + "ms";
-    } else {
-      dot.className = "net-dot gray";
-      text.textContent = "无路径";
-    }
-  } catch (e) {
-    dot.className = "net-dot gray";
-    text.textContent = "检测失败";
-  }
-}
-
-// 启动：网络质量检测每15秒刷新（已由 checkPipelineNetwork 处理）
-
-// 诊断浏览器支持
-console.log("MediaDevices:", !!navigator.mediaDevices);
-console.log("getUserMedia:", typeof (navigator.mediaDevices || {}).getUserMedia);
 </script>
 </body>
 </html>

@@ -23,7 +23,7 @@ from aiohttp import web
 # ══════════════════════════════════════════
 # 配置
 # ══════════════════════════════════════════
-HOST = "0.0.0.0"
+HOST = "::"
 PORT = 12054        # HTTP
 HTTPS_PORT = 12056  # HTTPS
 
@@ -52,6 +52,9 @@ TTS_MODEL = "tts2-emo-qwen3-8b-192k"
 # Hermes API Server（本地）
 HERMES_API_URL = "http://127.0.0.1:8642/v1/chat/completions"
 HERMES_API_KEY="voice-mid-bridge-key"
+
+# 网页登录密码
+VOICE_PASSWORD = "hyjaizlj"
 
 # 历史记录目录
 HISTORY_DIR = os.path.expanduser("~/report2db/voice_history")
@@ -754,6 +757,20 @@ async def api_diag_check(request):
     except Exception as e:
         alive, err = False, str(e)
     return web.json_response({"service": service, "alive": alive, "host": host, "port": port, "error": err})
+
+
+async def api_auth_login(request):
+    """登录验证"""
+    try:
+        body = await request.json()
+        pw = body.get("password", "")
+        if pw == VOICE_PASSWORD:
+            return web.json_response({"status": "ok"})
+        return web.json_response({"status": "error", "message": "密码错误"}, status=401)
+    except Exception as e:
+        return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+
 # 页面路由
 # ══════════════════════════════════════════
 VOICE_HTML = None
@@ -869,6 +886,7 @@ def main():
     app.router.add_post("/api/network/config", api_network_config_save)
     app.router.add_get("/api/network/defaults", api_network_defaults)
     app.router.add_get("/api/network/preview", api_network_preview)
+    app.router.add_post("/api/auth/login", api_auth_login)
 
     # HTTP
     runner = web.AppRunner(app)
